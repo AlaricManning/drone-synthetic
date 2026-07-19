@@ -32,8 +32,6 @@ def _convert(args: argparse.Namespace) -> int:
     config = load_convert_config(args.config)
     result = convert_run(
         run_id=args.run_id,
-        normal_root=args.normal,
-        mask_root=args.mask,
         config=config,
         dataset_version=args.version,
     )
@@ -82,9 +80,7 @@ def main() -> int:
         help="convert a raw run into a versioned dataset (annotations, YOLO export, QC)",
     )
     convert.add_argument("--config", type=Path, required=True, help="conversion config YAML")
-    convert.add_argument("--normal", type=Path, required=True, help="normal render directory")
-    convert.add_argument("--mask", type=Path, required=True, help="mask render directory")
-    convert.add_argument("--run-id", required=True, help="run id, e.g. run_0001")
+    convert.add_argument("--run-id", required=True, help="registered run to convert, e.g. run_0001")
     convert.add_argument("--version", required=True, help="dataset version to write, e.g. v001")
 
     subparsers.add_parser(
