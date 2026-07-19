@@ -1,0 +1,26 @@
+# Conversion config: raw run -> versioned dataset.
+# Every knob that affects dataset content lives here so a dataset version is
+# fully determined by (input runs, this file).
+
+class_map:
+  0: drone
+
+mask:
+  # a pixel belongs to the drone if any channel exceeds this value
+  threshold: 12
+  # boxes smaller than this many pixels are dropped as mask noise
+  min_box_area: 16
+
+split:
+  # frames from one camera path are near-duplicates, so splitting is only
+  # ever done at run level — whole runs are held out for val, never frames
+  mode: by_run
+  # runs listed here go to val; everything else trains. With a single run
+  # captured so far, leave empty: everything trains, val is empty.
+  val_runs: []
+
+storage:
+  # local staging during development; becomes s3://<bucket>/... in production
+  raw_root: data/raw
+  dataset_root: data/datasets
+  qc_root: data/qc

@@ -1,0 +1,22 @@
+# local data staging — raw runs, generated datasets, QC output live in S3, not git
+data/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# secrets — AWS credentials never live in this repo
+.env
