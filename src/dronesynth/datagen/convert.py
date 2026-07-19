@@ -15,6 +15,11 @@ from dronesynth.datagen.pairing import pair_frames
 from dronesynth.datagen.qc import QcReport, compute_qc, render_debug_frame, write_qc_report
 from dronesynth.datagen.split import split_runs
 from dronesynth.datagen.yolo import ExportItem, export_yolo
+from dronesynth.ingest.manifest import read_manifest
+
+
+class ConvertError(ValueError):
+    """Raised when a run cannot be converted."""
 
 
 @dataclass(frozen=True)
@@ -26,8 +31,6 @@ class ConvertResult:
 
 def convert_run(
     run_id: str,
-    normal_root: Path,
-    mask_root: Path,
     config: ConvertConfig,
     dataset_version: str,
 ) -> ConvertResult:
@@ -37,7 +40,14 @@ def convert_run(
         )
     class_id = next(iter(config.class_map))
 
-    pairs = pair_frames(normal_root, mask_root)
+    run_dir = Path(config.storage.raw_root) / run_id
+    manifest = read_manifest(run_dir)  # no manifest -> not a run, refuse loudly
+    pairs = pair_frames(run_dir / "normal", run_dir / "mask")
+    if len(pairs) != manifest.frame_count:
+        raise ConvertError(
+            f"run {run_id} has {len(pairs)} frame pairs on disk but its manifest "
+            f"says {manifest.frame_count} — the run is corrupt"
+        )
     annotations = [
         annotate_frame(
             pair,
