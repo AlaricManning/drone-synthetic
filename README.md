@@ -48,9 +48,15 @@ Windows (UE 5.5 + EasySynth)
 - **Datasets are versioned and deterministic.** A dataset version is fully
   determined by (input runs, conversion config). Same inputs, same output,
   always re-derivable.
-- **Splits are run-level, never frame-level.** Consecutive frames from one
-  camera path are near-duplicates; frame-level random splits leak train into
-  val and inflate metrics. Whole runs are held out for validation.
+- **The train/val split ships with the dataset, run-level, never
+  frame-level.** Consecutive frames from one camera path are near-duplicate
+  images, so a random frame-level split leaks train data into val and
+  inflates metrics — and a consumer handed loose frames can't know that,
+  since the sequence structure isn't visible in a folder of PNGs. As with
+  COCO and ImageNet, the producer defines the split: whole runs are held
+  out via `split.val_runs` in the config, and frame-level splitting is
+  rejected outright. (With one run captured, val is empty until the first
+  held-out run is added.)
 - **QC is the proof of quality.** Nothing downstream trains on this data
   within the pipeline, so the QC report (boxes per frame, box size
   distribution, mask fill ratio, empty-frame counts, flagged outliers) and
