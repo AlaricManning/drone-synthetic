@@ -3,10 +3,14 @@
 Synthetic training-data pipeline for drone detection. UE 5.5 + EasySynth render
 paired frames — a normal render and a drone-on-black mask render from identical
 camera paths — and this pipeline turns those pairs into versioned, QC'd YOLO
-datasets. S3 is the system of record; conversion runs as a containerized AWS
-Batch job.
+datasets. The production shape it is being built toward: S3 as the system of
+record, with conversion running as a containerized AWS Batch job.
 
 ## Architecture
+
+The diagram shows the target architecture. Ingest and convert work today
+against local storage (`data/`); the S3 system of record, the Batch job, and
+`dronesynth submit` are the parts still to come.
 
 ```
 Windows (UE 5.5 + EasySynth)
@@ -39,7 +43,10 @@ Windows (UE 5.5 + EasySynth)
 - **Runs are the atomic unit.** Each capture session is one immutable
   `run_id` with a manifest recording UE map, drone model, camera path, capture
   date, and (later) domain-randomization parameters and seed. Runs are the
-  unit of ingest, QC, provenance, and train/val splitting.
+  unit of ingest, QC, provenance, and train/val splitting. Ingest writes the
+  manifest only after every frame is in place, so a run without a manifest is
+  always debris from a failed ingest, never a real run — and a run with one
+  is immutable: re-ingesting an existing id is an error.
 - **Canonical JSON annotations; YOLO is an export.** Mask renders carry
   segmentation information for free. Conversion writes per-frame JSON
   (boxes, mask area, fill ratio) as the source of truth and generates the
@@ -88,6 +95,31 @@ infra/                 Terraform: bucket, IAM, ECR, Batch
 tests/
 data/                  gitignored local staging (raw/, datasets/, qc/)
 ```
+
+## Usage
+
+After each render session, register the capture as a run:
+
+```bash
+dronesynth ingest --config configs/convert.yaml \
+  --normal /mnt/c/datasets/drone_normal --mask /mnt/c/datasets/drone_mask \
+  --run-id run_0001 --ue-map testLevel --drone-model White_Drone
+```
+
+This validates the capture (strict normal/mask pairing — broken renders are
+rejected before anything is copied), flattens it into
+`data/raw/run_0001/{normal,mask}/`, and writes the manifest last.
+
+Then convert a registered run into a versioned dataset:
+
+```bash
+dronesynth convert --config configs/convert.yaml --run-id run_0001 --version v001
+```
+
+This writes canonical annotations and the YOLO layout to
+`data/datasets/v001/` and the QC report plus debug renders (frames with the
+detected boxes drawn on) to `data/qc/run_0001/`. Review flagged frames — and
+ideally scrub the debug folder — before treating the dataset as good.
 
 ## Development setup
 
