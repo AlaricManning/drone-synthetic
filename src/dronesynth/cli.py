@@ -2,10 +2,30 @@
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 from dronesynth.config import load_convert_config
 from dronesynth.datagen.convert import convert_run
+from dronesynth.ingest.capture import ingest_capture
+
+
+def _ingest(args: argparse.Namespace) -> int:
+    config = load_convert_config(args.config)
+    result = ingest_capture(
+        normal_root=args.normal,
+        mask_root=args.mask,
+        run_id=args.run_id,
+        raw_root=Path(config.storage.raw_root),
+        captured_at=args.captured_at,
+        ue_map=args.ue_map,
+        drone_model=args.drone_model,
+    )
+    manifest = result.manifest
+    print(f"registered {manifest.run_id}: {manifest.frame_count} frame pairs")
+    print(f"  sequence: {manifest.camera_sequence} ({manifest.ue_map}, {manifest.drone_model})")
+    print(f"  run dir:  {result.run_dir}")
+    return 0
 
 
 def _convert(args: argparse.Namespace) -> int:
@@ -41,9 +61,20 @@ def main() -> int:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser(
+    ingest = subparsers.add_parser(
         "ingest",
         help="validate a completed capture, write its manifest, sync to raw storage",
+    )
+    ingest.add_argument("--config", type=Path, required=True, help="config YAML (storage roots)")
+    ingest.add_argument("--normal", type=Path, required=True, help="normal render directory")
+    ingest.add_argument("--mask", type=Path, required=True, help="mask render directory")
+    ingest.add_argument("--run-id", required=True, help="run id to register, e.g. run_0001")
+    ingest.add_argument("--ue-map", required=True, help="UE map/level the capture was rendered in")
+    ingest.add_argument("--drone-model", required=True, help="drone asset rendered in the capture")
+    ingest.add_argument(
+        "--captured-at",
+        default=date.today().isoformat(),
+        help="ISO date of the render session (default: today)",
     )
 
     convert = subparsers.add_parser(
@@ -62,6 +93,8 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    if args.command == "ingest":
+        return _ingest(args)
     if args.command == "convert":
         return _convert(args)
     print(f"'{args.command}' is not implemented yet", file=sys.stderr)
