@@ -10,7 +10,17 @@ from dronesynth.storage.backends import (
     S3Storage,
     Storage,
     StorageError,
+    StorageKeyExists,
+    StorageNotPermitted,
     storage_for,
 )
 
-__all__ = ["LocalStorage", "S3Storage", "Storage", "StorageError", "storage_for"]
+__all__ = [
+    "LocalStorage",
+    "S3Storage",
+    "Storage",
+    "StorageError",
+    "StorageKeyExists",
+    "StorageNotPermitted",
+    "storage_for",
+]

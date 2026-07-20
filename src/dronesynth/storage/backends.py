@@ -11,11 +11,19 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from shutil import copy2
+from shutil import copy2, rmtree
 
 
 class StorageError(Exception):
     """Raised when a storage operation fails in a way we can name."""
+
+
+class StorageKeyExists(StorageError):
+    """Raised by write_text_if_absent when the key is already there."""
+
+
+class StorageNotPermitted(StorageError):
+    """Raised when the current credentials cannot perform the operation."""
 
 
 class Storage(ABC):
@@ -34,10 +42,29 @@ class Storage(ABC):
     def read_text(self, key: str) -> str: ...
 
     @abstractmethod
+    def write_text_if_absent(self, key: str, text: str) -> None:
+        """Write only if the key doesn't exist; raise StorageKeyExists if it does.
+
+        This is the primitive behind run immutability: the manifest is written
+        with if-absent semantics, so two ingests of the same run id cannot both
+        succeed — even over S3, where a put-only identity cannot check
+        existence beforehand.
+        """
+
+    @abstractmethod
     def exists(self, key: str) -> bool: ...
 
     @abstractmethod
     def list_keys(self, prefix: str = "") -> list[str]: ...
+
+    @abstractmethod
+    def delete_prefix(self, prefix: str) -> None:
+        """Remove everything under a prefix; StorageNotPermitted if impossible.
+
+        Local storage supports this (clearing debris from a failed ingest);
+        the S3 ingest identity deliberately cannot delete, so callers must
+        treat this as best-effort.
+        """
 
     @abstractmethod
     def describe(self, key: str = "") -> str:
@@ -68,8 +95,19 @@ class LocalStorage(Storage):
     def read_text(self, key: str) -> str:
         return self._path(key).read_text()
 
+    def write_text_if_absent(self, key: str, text: str) -> None:
+        path = self._path(key)
+        if path.exists():
+            raise StorageKeyExists(f"{self.describe(key)} already exists")
+        self.write_text(key, text)
+
     def exists(self, key: str) -> bool:
         return self._path(key).exists()
+
+    def delete_prefix(self, prefix: str) -> None:
+        base = self._path(prefix)
+        if base.exists():
+            rmtree(base)
 
     def list_keys(self, prefix: str = "") -> list[str]:
         base = self._path(prefix) if prefix else self.root
@@ -112,16 +150,43 @@ class S3Storage(Storage):
         response = self.client.get_object(Bucket=self.bucket, Key=self._key(key))
         return response["Body"].read().decode("utf-8")
 
+    def write_text_if_absent(self, key: str, text: str) -> None:
+        from botocore.exceptions import ClientError
+
+        try:
+            # S3 conditional write: fails with 412 if the object already exists
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=self._key(key),
+                Body=text.encode("utf-8"),
+                IfNoneMatch="*",
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("PreconditionFailed", "412"):
+                raise StorageKeyExists(f"{self.describe(key)} already exists") from exc
+            raise
+
     def exists(self, key: str) -> bool:
         from botocore.exceptions import ClientError
 
         try:
             self.client.head_object(Bucket=self.bucket, Key=self._key(key))
         except ClientError as exc:
-            if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
+            code = exc.response["Error"]["Code"]
+            if code in ("404", "NoSuchKey", "NotFound"):
                 return False
+            if code in ("403", "AccessDenied"):
+                raise StorageNotPermitted(
+                    f"cannot check {self.describe(key)}: credentials lack read access"
+                ) from exc
             raise
         return True
+
+    def delete_prefix(self, prefix: str) -> None:
+        raise StorageNotPermitted(
+            "the ingest identity is put-only by design; clean up S3 debris with "
+            "admin credentials if needed"
+        )
 
     def list_keys(self, prefix: str = "") -> list[str]:
         full_prefix = self._key(prefix) if prefix else self.prefix

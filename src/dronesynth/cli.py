@@ -16,7 +16,7 @@ def _ingest(args: argparse.Namespace) -> int:
         normal_root=args.normal,
         mask_root=args.mask,
         run_id=args.run_id,
-        raw_root=Path(config.storage.raw_root),
+        raw_root=args.raw_root or config.storage.raw_root,
         captured_at=args.captured_at,
         ue_map=args.ue_map,
         drone_model=args.drone_model,
@@ -24,7 +24,7 @@ def _ingest(args: argparse.Namespace) -> int:
     manifest = result.manifest
     print(f"registered {manifest.run_id}: {manifest.frame_count} frame pairs")
     print(f"  sequence: {manifest.camera_sequence} ({manifest.ue_map}, {manifest.drone_model})")
-    print(f"  run dir:  {result.run_dir}")
+    print(f"  location: {result.location}")
     return 0
 
 
@@ -73,6 +73,11 @@ def main() -> int:
         "--captured-at",
         default=date.today().isoformat(),
         help="ISO date of the render session (default: today)",
+    )
+    ingest.add_argument(
+        "--raw-root",
+        default=None,
+        help="override storage.raw_root from config, e.g. s3://bucket/raw",
     )
 
     convert = subparsers.add_parser(

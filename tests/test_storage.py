@@ -2,7 +2,14 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from dronesynth.storage import LocalStorage, S3Storage, StorageError, storage_for
+from dronesynth.storage import (
+    LocalStorage,
+    S3Storage,
+    StorageError,
+    StorageKeyExists,
+    StorageNotPermitted,
+    storage_for,
+)
 
 
 @pytest.fixture(params=["local", "s3"])
@@ -49,6 +56,28 @@ def test_list_keys(storage):
     ]
     assert len(storage.list_keys()) == 3
     assert storage.list_keys("run_0009") == []
+
+
+def test_write_text_if_absent(storage):
+    storage.write_text_if_absent("run_0001/manifest.json", "first")
+    with pytest.raises(StorageKeyExists, match="already exists"):
+        storage.write_text_if_absent("run_0001/manifest.json", "second")
+    assert storage.read_text("run_0001/manifest.json") == "first"
+
+
+def test_delete_prefix_local(tmp_path):
+    storage = LocalStorage(tmp_path / "root")
+    storage.write_text("run_0001/normal/frame.png", "x")
+    storage.write_text("run_0002/manifest.json", "{}")
+    storage.delete_prefix("run_0001")
+    assert storage.list_keys() == ["run_0002/manifest.json"]
+    storage.delete_prefix("run_0009")  # deleting nothing is fine
+
+
+def test_delete_prefix_s3_not_permitted():
+    storage = S3Storage(bucket="b", prefix="raw", client=object())
+    with pytest.raises(StorageNotPermitted, match="put-only"):
+        storage.delete_prefix("run_0001")
 
 
 def test_storage_for_local(tmp_path):
