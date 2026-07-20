@@ -8,9 +8,10 @@ record, with conversion running as a containerized AWS Batch job.
 
 ## Architecture
 
-The diagram shows the target architecture. Ingest and convert work today
-against local storage (`data/`); the S3 system of record, the Batch job, and
-`dronesynth submit` are the parts still to come.
+The diagram shows the target architecture. The S3 system of record is live
+and ingest writes to it; convert currently runs locally against `data/` —
+the containerized Batch job and `dronesynth submit` are the parts still to
+come.
 
 ```
 Windows (UE 5.5 + EasySynth)
@@ -37,6 +38,46 @@ Windows (UE 5.5 + EasySynth)
             └── yolo/
         s3://<bucket>/qc/<run_id>/          QC report + debug box renders
 ```
+
+## Where this fits in the larger system
+
+This repo is one station of a detection data flywheel, alongside
+[object-tracker](https://github.com/AlaricManning/object-tracker) and
+[object-tracker-pipeline](https://github.com/AlaricManning/object-tracker-pipeline).
+COCO has no `drone` class, so the tracker's stock YOLOv11 cannot detect
+drones — custom-trained weights are required, and this pipeline manufactures
+the labeled data that trains them:
+
+```
+┌─ drone-synthetic (this repo) ──┐
+│ UE renders → runs → datasets/vN ──► training (external for now)
+└────────────────────────────────┘        │ drone-capable YOLO weights
+                                          ▼
+┌─ object-tracker (edge) ────────────────────────────┐
+│ custom weights replace stock yolo11n; "drone"      │
+│ becomes the target class → clips + KLV → s3 raw/   │
+└────────────────────────┬───────────────────────────┘
+                         ▼
+┌─ object-tracker-pipeline ──────────────────────────┐
+│ KLV → Parquet catalog → Athena/DuckDB              │
+└────────────────────────┬───────────────────────────┘
+                         │  query: where does the model struggle?
+                         ▼
+        findings → domain-randomization params in the
+        next runs' manifests → new datasets → retrain ──┐
+                         ▲──────────────────────────────┘
+```
+
+The tracker's `near_misses` confidence tier is ready-made hard-example
+mining: queries over real detections show where the model is unsure, and
+those findings become domain-randomization parameters in the next capture
+runs' manifests (the reserved `randomization`/`seed` fields are the return
+path). Real clips from the field are also the only true eval set — the
+synthetic run-level val split measures sim-to-sim generalization only.
+
+The systems couple through artifacts, never code: dataset version → model
+weights → KLV catalog → randomization params. Separate buckets, separate
+IAM identities.
 
 ## Design decisions
 
@@ -101,14 +142,18 @@ data/                  gitignored local staging (raw/, datasets/, qc/)
 After each render session, register the capture as a run:
 
 ```bash
-dronesynth ingest --config configs/convert.yaml \
+AWS_PROFILE=drone-synth-ingest dronesynth ingest --config configs/convert.yaml \
   --normal /mnt/c/datasets/drone_normal --mask /mnt/c/datasets/drone_mask \
-  --run-id run_0001 --ue-map testLevel --drone-model White_Drone
+  --run-id run_0001 --ue-map testLevel --drone-model White_Drone \
+  --raw-root s3://drone-synthetic-am/raw
 ```
 
 This validates the capture (strict normal/mask pairing — broken renders are
-rejected before anything is copied), flattens it into
-`data/raw/run_0001/{normal,mask}/`, and writes the manifest last.
+rejected before anything is uploaded), flattens it into
+`raw/run_0001/{normal,mask}/`, and writes the manifest last — with if-absent
+semantics, so an existing run can never be overwritten. Omit `--raw-root`
+(and the profile) to ingest to the local `data/raw` staging area from config
+instead; local runs are what `convert` reads until the Batch job lands.
 
 Then convert a registered run into a versioned dataset:
 
@@ -120,6 +165,24 @@ This writes canonical annotations and the YOLO layout to
 `data/datasets/v001/` and the QC report plus debug renders (frames with the
 detected boxes drawn on) to `data/qc/run_0001/`. Review flagged frames — and
 ideally scrub the debug folder — before treating the dataset as good.
+
+## Infrastructure
+
+AWS resources are managed by Terraform in `infra/` and applied manually with
+admin credentials:
+
+```bash
+cd infra
+terraform init
+terraform apply -var bucket_name=drone-synthetic-am
+```
+
+The ingest access key is created outside Terraform (state files store
+secrets in plaintext) and lives only in `~/.aws/credentials`:
+
+```bash
+aws iam create-access-key --user-name drone-synth-ingest
+```
 
 ## Development setup
 
