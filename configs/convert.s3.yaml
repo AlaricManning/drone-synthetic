@@ -1,0 +1,19 @@
+# Cloud conversion config: identical knobs to convert.yaml, but every storage
+# root points at the system of record. This is the config the container runs
+# with; content-affecting settings must stay in lockstep with convert.yaml.
+
+class_map:
+  0: drone
+
+mask:
+  threshold: 12
+  min_box_area: 16
+
+split:
+  mode: by_run
+  val_runs: []
+
+storage:
+  raw_root: s3://drone-synthetic-am/raw
+  dataset_root: s3://drone-synthetic-am/datasets
+  qc_root: s3://drone-synthetic-am/qc

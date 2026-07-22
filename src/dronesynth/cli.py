@@ -41,8 +41,8 @@ def _convert(args: argparse.Namespace) -> int:
     if report.total_boxes:
         print(f"  box area {report.box_area_min}..{report.box_area_max} px, "
               f"fill ratio {report.fill_ratio_min}..{report.fill_ratio_max}")
-    print(f"  dataset: {result.dataset_dir}")
-    print(f"  qc:      {result.qc_dir}")
+    print(f"  dataset: {result.dataset_location}")
+    print(f"  qc:      {result.qc_location}")
     if report.flags:
         print(f"  {len(report.flags)} flag(s) — review these frames in the debug folder:")
         for flag in report.flags:
