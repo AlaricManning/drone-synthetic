@@ -8,10 +8,10 @@ record, with conversion running as a containerized AWS Batch job.
 
 ## Architecture
 
-The diagram shows the target architecture. The S3 system of record is live,
-ingest writes to it, and the containerized converter runs the full S3-to-S3
-path (proven locally via `docker run`) — AWS Batch and `dronesynth submit`
-are the parts still to come.
+Everything in the diagram is live: ingest writes runs to S3, and
+`dronesynth submit` converts them on AWS Batch (Fargate) using the image in
+ECR. The same container also runs locally via `docker run` — that is the
+debugging path, not a separate implementation.
 
 ```
 Windows (UE 5.5 + EasySynth)
@@ -176,7 +176,19 @@ docker run --rm -v ~/.aws:/home/app/.aws:ro -e AWS_PROFILE=default \
 ```
 
 Credentials are never baked into the image: locally they come from the
-read-only `~/.aws` mount; on Batch they will come from the job role.
+read-only `~/.aws` mount; on Batch they come from the job role.
+
+In production, conversion runs on AWS Batch instead — submit a job and watch
+it through the queue:
+
+```bash
+dronesynth submit --run-id run_0001 --version v001
+aws batch describe-jobs --jobs <job-id> --query 'jobs[0].status'
+aws logs tail /aws/batch/job --since 15m   # the container's conversion summary
+```
+
+The job definition owns the image, roles, and resources; a submission only
+contributes the run id and dataset version.
 
 ## Infrastructure
 
