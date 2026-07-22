@@ -11,6 +11,7 @@ from dronesynth.storage.backends import (
     Storage,
     StorageError,
     StorageKeyExists,
+    StorageKeyMissing,
     StorageNotPermitted,
     storage_for,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "Storage",
     "StorageError",
     "StorageKeyExists",
+    "StorageKeyMissing",
     "StorageNotPermitted",
     "storage_for",
 ]

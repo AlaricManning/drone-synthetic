@@ -1,13 +1,14 @@
 import json
 
+import boto3
 import cv2
 import numpy as np
 import pytest
+from moto import mock_aws
 
 from dronesynth.config import load_convert_config
 from dronesynth.datagen.convert import ConvertError, convert_run
 from dronesynth.ingest.capture import ingest_capture
-from dronesynth.ingest.manifest import ManifestError
 
 CONFIG = """\
 class_map:
@@ -85,8 +86,50 @@ def test_convert_registered_run_end_to_end(tmp_path):
 
 def test_unregistered_run_refused(tmp_path):
     config = registered_config(tmp_path, {0: None})
-    with pytest.raises(ManifestError, match="incomplete or not a run"):
+    with pytest.raises(ConvertError, match="incomplete or not a run"):
         convert_run(run_id="run_0002", config=config, dataset_version="v001")
+
+
+def test_convert_all_s3_end_to_end(tmp_path):
+    write_capture(tmp_path / "capture", {0: (10, 30, 5, 15), 1: None})
+    config_path = tmp_path / "convert.yaml"
+    config_path.write_text(CONFIG.format(root="s3://synth-bucket"))
+    with mock_aws():
+        client = boto3.client("s3", region_name="us-east-1")
+        client.create_bucket(Bucket="synth-bucket")
+
+        ingest_capture(
+            normal_root=tmp_path / "capture" / "normal",
+            mask_root=tmp_path / "capture" / "mask",
+            run_id="run_0001",
+            raw_root="s3://synth-bucket/raw",
+            captured_at="2026-07-19",
+            ue_map="SkyTestMap",
+            drone_model="Quadcopter_A",
+        )
+
+        config = load_convert_config(config_path)
+        result = convert_run(run_id="run_0001", config=config, dataset_version="v001")
+
+        assert result.report.frames == 2
+        assert result.dataset_location == "s3://synth-bucket/datasets/v001"
+        assert result.qc_location == "s3://synth-bucket/qc/run_0001"
+
+        keys = {
+            entry["Key"]
+            for entry in client.list_objects_v2(Bucket="synth-bucket")["Contents"]
+        }
+        assert "datasets/v001/annotations/run_0001.json" in keys
+        assert "datasets/v001/yolo/dataset.yaml" in keys
+        assert "datasets/v001/yolo/images/train/run_0001_000000.png" in keys
+        assert "datasets/v001/yolo/labels/train/run_0001_000001.txt" in keys
+        assert "qc/run_0001/report.json" in keys
+        assert "qc/run_0001/debug/run_0001_000000.png" in keys
+
+        label = client.get_object(
+            Bucket="synth-bucket", Key="datasets/v001/yolo/labels/train/run_0001_000000.txt"
+        )["Body"].read().decode()
+        assert label.startswith("0 ")
 
 
 def test_manifest_frame_count_mismatch_refused(tmp_path):

@@ -22,6 +22,10 @@ class StorageKeyExists(StorageError):
     """Raised by write_text_if_absent when the key is already there."""
 
 
+class StorageKeyMissing(StorageError):
+    """Raised by read_text/get_file when the key does not exist."""
+
+
 class StorageNotPermitted(StorageError):
     """Raised when the current credentials cannot perform the operation."""
 
@@ -85,7 +89,10 @@ class LocalStorage(Storage):
 
     def get_file(self, key: str, dest: Path) -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        copy2(self._path(key), dest)
+        try:
+            copy2(self._path(key), dest)
+        except FileNotFoundError as exc:
+            raise StorageKeyMissing(f"{self.describe(key)} does not exist") from exc
 
     def write_text(self, key: str, text: str) -> None:
         path = self._path(key)
@@ -93,7 +100,10 @@ class LocalStorage(Storage):
         path.write_text(text)
 
     def read_text(self, key: str) -> str:
-        return self._path(key).read_text()
+        try:
+            return self._path(key).read_text()
+        except FileNotFoundError as exc:
+            raise StorageKeyMissing(f"{self.describe(key)} does not exist") from exc
 
     def write_text_if_absent(self, key: str, text: str) -> None:
         path = self._path(key)
@@ -138,8 +148,15 @@ class S3Storage(Storage):
         self.client.upload_file(str(source), self.bucket, self._key(key))
 
     def get_file(self, key: str, dest: Path) -> None:
+        from botocore.exceptions import ClientError
+
         dest.parent.mkdir(parents=True, exist_ok=True)
-        self.client.download_file(self.bucket, self._key(key), str(dest))
+        try:
+            self.client.download_file(self.bucket, self._key(key), str(dest))
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
+                raise StorageKeyMissing(f"{self.describe(key)} does not exist") from exc
+            raise
 
     def write_text(self, key: str, text: str) -> None:
         self.client.put_object(
@@ -147,7 +164,14 @@ class S3Storage(Storage):
         )
 
     def read_text(self, key: str) -> str:
-        response = self.client.get_object(Bucket=self.bucket, Key=self._key(key))
+        from botocore.exceptions import ClientError
+
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=self._key(key))
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
+                raise StorageKeyMissing(f"{self.describe(key)} does not exist") from exc
+            raise
         return response["Body"].read().decode("utf-8")
 
     def write_text_if_absent(self, key: str, text: str) -> None:
