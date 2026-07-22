@@ -1,0 +1,6 @@
+# allowlist: nothing enters the build context except what the image needs,
+# so datasets, .venv, git history, and terraform state can never leak in
+*
+!pyproject.toml
+!src
+!configs
