@@ -8,10 +8,10 @@ record, with conversion running as a containerized AWS Batch job.
 
 ## Architecture
 
-The diagram shows the target architecture. The S3 system of record is live
-and ingest writes to it; convert currently runs locally against `data/` —
-the containerized Batch job and `dronesynth submit` are the parts still to
-come.
+The diagram shows the target architecture. The S3 system of record is live,
+ingest writes to it, and the containerized converter runs the full S3-to-S3
+path (proven locally via `docker run`) — AWS Batch and `dronesynth submit`
+are the parts still to come.
 
 ```
 Windows (UE 5.5 + EasySynth)
@@ -165,6 +165,18 @@ This writes canonical annotations and the YOLO layout to
 `data/datasets/v001/` and the QC report plus debug renders (frames with the
 detected boxes drawn on) to `data/qc/run_0001/`. Review flagged frames — and
 ideally scrub the debug folder — before treating the dataset as good.
+
+To run the conversion as the container does in production — everything in
+and out of S3, using `configs/convert.s3.yaml`:
+
+```bash
+docker build -f docker/Dockerfile -t dronesynth-convert .
+docker run --rm -v ~/.aws:/home/app/.aws:ro -e AWS_PROFILE=default \
+  dronesynth-convert --run-id run_0001 --version v001
+```
+
+Credentials are never baked into the image: locally they come from the
+read-only `~/.aws` mount; on Batch they will come from the job role.
 
 ## Infrastructure
 
