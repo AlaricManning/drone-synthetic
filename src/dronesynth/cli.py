@@ -5,6 +5,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from dronesynth.batch import DEFAULT_JOB_DEFINITION, DEFAULT_QUEUE, submit_conversion
 from dronesynth.config import load_convert_config
 from dronesynth.datagen.convert import convert_run
 from dronesynth.ingest.capture import ingest_capture
@@ -25,6 +26,20 @@ def _ingest(args: argparse.Namespace) -> int:
     print(f"registered {manifest.run_id}: {manifest.frame_count} frame pairs")
     print(f"  sequence: {manifest.camera_sequence} ({manifest.ue_map}, {manifest.drone_model})")
     print(f"  location: {result.location}")
+    return 0
+
+
+def _submit(args: argparse.Namespace) -> int:
+    job = submit_conversion(
+        args.run_id,
+        args.version,
+        queue=args.queue,
+        job_definition=args.job_definition,
+    )
+    print(f"submitted {job.job_name} to {job.queue}")
+    print(f"  job id: {job.job_id}")
+    print(f"  status: aws batch describe-jobs --jobs {job.job_id} "
+          f"--query 'jobs[0].status'")
     return 0
 
 
@@ -88,9 +103,15 @@ def main() -> int:
     convert.add_argument("--run-id", required=True, help="registered run to convert, e.g. run_0001")
     convert.add_argument("--version", required=True, help="dataset version to write, e.g. v001")
 
-    subparsers.add_parser(
+    submit = subparsers.add_parser(
         "submit",
         help="submit a conversion job to AWS Batch",
+    )
+    submit.add_argument("--run-id", required=True, help="registered run to convert")
+    submit.add_argument("--version", required=True, help="dataset version to write")
+    submit.add_argument("--queue", default=DEFAULT_QUEUE, help="Batch job queue")
+    submit.add_argument(
+        "--job-definition", default=DEFAULT_JOB_DEFINITION, help="Batch job definition"
     )
 
     args = parser.parse_args()
@@ -98,6 +119,8 @@ def main() -> int:
         return _ingest(args)
     if args.command == "convert":
         return _convert(args)
+    if args.command == "submit":
+        return _submit(args)
     print(f"'{args.command}' is not implemented yet", file=sys.stderr)
     return 2
 
