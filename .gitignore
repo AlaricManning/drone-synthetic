@@ -16,6 +16,7 @@ build/
 *.tfstate
 *.tfstate.*
 *.tfvars
+infra/.build/
 
 # secrets — AWS credentials never live in this repo
 .env
