@@ -3,8 +3,8 @@
 Synthetic training-data pipeline for drone detection. UE 5.5 + EasySynth render
 paired frames — a normal render and a drone-on-black mask render from identical
 camera paths — and this pipeline turns those pairs into versioned, QC'd YOLO
-datasets. The production shape it is being built toward: S3 as the system of
-record, with conversion running as a containerized AWS Batch job.
+datasets. S3 is the system of record; conversion runs as a containerized job
+on AWS Batch.
 
 ## Architecture
 
@@ -125,14 +125,18 @@ resources are provisioned by Terraform in `infra/`.
 ## Repository layout
 
 ```
-configs/               conversion config: mask threshold, split policy,
-                       class map, storage roots (local paths or s3:// URIs)
+configs/               conversion knobs (threshold, split policy, class map)
+                       + storage roots: convert.yaml (local), convert.s3.yaml
+                       (all-S3, baked into the container image)
 src/dronesynth/
   ingest/              run registration, validation, manifest, S3 sync
   datagen/             pairing, mask→box, canonical JSON, exporters, QC
   storage/             local/S3 abstraction — same code both sides
+  batch.py             job submission to AWS Batch
   cli.py               ingest / convert / submit entrypoints
-infra/                 Terraform: bucket, IAM, ECR, Batch
+docker/                the conversion job image Batch runs
+docs/                  RUNBOOK.md — operator procedures
+infra/                 Terraform: bucket, IAM, ECR, Batch (applied)
 tests/
 data/                  gitignored local staging (raw/, datasets/, qc/)
 ```
