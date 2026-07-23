@@ -13,6 +13,12 @@ Everything in the diagram is live: ingest writes runs to S3, and
 ECR. The same container also runs locally via `docker run` — that is the
 debugging path, not a separate implementation.
 
+Conversion also triggers itself: an EventBridge rule watches for
+`raw/*/manifest.json` landing (the manifest-last protocol makes that the
+run-complete signal) and a small Lambda submits the Batch job, writing
+dataset version `auto-<run_id>`. Manual `dronesynth submit` remains for
+curated multi-run versions and re-runs.
+
 ```
 Windows (UE 5.5 + EasySynth)
 ┌──────────────────────────────────────────┐
@@ -28,7 +34,8 @@ Windows (UE 5.5 + EasySynth)
             └── manifest.json             construction; without one, ignore it
                  │
                  │  dronesynth submit --run <run_id>
-                 ▼
+                 │  (or automatically: EventBridge fires
+                 ▼   when manifest.json lands)
         AWS Batch job (Fargate, CPU) — containerized converter
             mask threshold → boxes → canonical JSON → YOLO export → QC
                  │

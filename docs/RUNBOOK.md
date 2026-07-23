@@ -51,7 +51,18 @@ Upload takes a few minutes per few hundred MB. The manifest is written
 last, so an interrupted ingest never produces a valid-looking run — just
 run the same command again.
 
-### 4. Submit the conversion
+### 4. Conversion submits itself (or submit manually)
+
+When ingest's manifest lands, an EventBridge rule fires a Lambda that
+submits the Batch job automatically, writing dataset version
+`auto-<run_id>` (e.g. `auto-run_0002`). For a normal capture, do nothing —
+go straight to watching the job (step 5); find its id with:
+
+```bash
+aws batch list-jobs --job-queue dronesynth-convert --filters name=JOB_NAME,values='convert-run_0002-*'
+```
+
+Manual submission is for curated multi-run dataset versions and re-runs:
 
 ```bash
 dronesynth submit --run-id run_0002 --version v002
@@ -59,8 +70,7 @@ dronesynth submit --run-id run_0002 --version v002
 
 Pick the version: re-converting existing runs with unchanged config can
 reuse the version (outputs are deterministic and overwrite in place); new
-runs or changed config mean a new version. Expected output is the job id
-plus a ready-made status command.
+runs or changed config mean a new version.
 
 ### 5. Watch the job
 
@@ -150,6 +160,19 @@ and clean with admin credentials, then re-ingest:
 aws s3 ls s3://drone-synthetic-am/raw/run_0002/ --recursive
 aws s3 rm s3://drone-synthetic-am/raw/run_0002/ --recursive   # removes the whole run
 ```
+
+**Auto-conversion didn't fire after an ingest** — the trigger chain is
+S3 event → EventBridge rule `dronesynth-manifest-created` → Lambda
+`dronesynth-auto-trigger` → Batch. Check the Lambda's logs first:
+
+```bash
+aws logs tail /aws/lambda/dronesynth-auto-trigger --since 1h
+```
+
+No log entries at all means the rule never matched (the pattern is exactly
+`raw/*/manifest.json`); an AccessDenied there means the Lambda's submit
+policy — re-apply terraform. Fallback: submit manually with
+`dronesynth submit`.
 
 **Batch job FAILED** — `describe-jobs` shows `statusReason`; the container
 log is in `aws logs tail /aws/batch/job --since 1h`. Common causes: image
