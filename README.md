@@ -139,6 +139,10 @@ data/                  gitignored local staging (raw/, datasets/, qc/)
 
 ## Usage
 
+Day-to-day operator procedures — render day step-by-step, deploying config
+or code changes, and failure recovery — live in the
+[runbook](docs/RUNBOOK.md). The commands below are the short version.
+
 After each render session, register the capture as a run:
 
 ```bash
