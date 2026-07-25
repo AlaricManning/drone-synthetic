@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import date
 from pathlib import Path
 
@@ -66,8 +66,12 @@ class RunManifest:
             raise ManifestError(
                 f"unsupported manifest schema_version {version!r} (expected {SCHEMA_VERSION})"
             )
+        # Drop fields this reader does not know. A capture repo may record more
+        # than we consume, and a manifest that is newer than us is not the same
+        # thing as a manifest that is wrong. Missing required fields still raise.
+        known = {f.name for f in fields(cls)}
         try:
-            return cls(**data)
+            return cls(**{k: v for k, v in data.items() if k in known})
         except TypeError as exc:
             raise ManifestError(f"malformed manifest: {exc}") from exc
 

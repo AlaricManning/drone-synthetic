@@ -76,9 +76,19 @@ def test_unknown_schema_version_rejected(tmp_path):
         read_manifest(tmp_path)
 
 
-def test_unknown_field_rejected(tmp_path):
+def test_unknown_field_ignored(tmp_path):
     data = manifest().to_dict()
     data["surprise"] = True
+    (tmp_path / MANIFEST_FILENAME).write_text(json.dumps(data))
+    loaded = read_manifest(tmp_path)
+    assert loaded == manifest()
+    # and the unknown key does not survive a round trip back out
+    assert "surprise" not in loaded.to_dict()
+
+
+def test_missing_required_field_still_rejected(tmp_path):
+    data = manifest().to_dict()
+    del data["ue_map"]
     (tmp_path / MANIFEST_FILENAME).write_text(json.dumps(data))
     with pytest.raises(ManifestError, match="malformed"):
         read_manifest(tmp_path)
