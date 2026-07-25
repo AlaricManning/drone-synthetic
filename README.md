@@ -6,6 +6,23 @@ camera paths — and this pipeline turns those pairs into versioned, QC'd YOLO
 datasets. S3 is the system of record; conversion runs as a containerized job
 on AWS Batch.
 
+![Normal render, mask pass, and the QC debug render with its derived box](assets/label-derivation.png)
+
+Labels come from the mask pass rather than from an annotator: thresholding the
+silhouette gives exact box extents at any scale. The `fill 0.35` is the box's
+mask fill ratio — a quadcopter is mostly air between its arms — and a drop in
+it is one of the signals QC flags for review. The third panel is the
+pipeline's own debug render, not an illustration.
+
+![The same flight at four distances, from a 240x156 box down to 26x15](assets/scale-strip.png)
+
+One run also spans an order of magnitude of object scale as the drone flies
+away. That variation is what a detector needs and what is most tedious to
+collect and label by hand.
+
+Both images are generated from a converted run by
+[scripts/make_demo_assets.py](scripts/make_demo_assets.py).
+
 ## Architecture
 
 Everything in the diagram is live: ingest writes runs to S3, and
