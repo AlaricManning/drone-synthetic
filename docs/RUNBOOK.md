@@ -13,6 +13,10 @@ in `infra/`, docker installed, and the conversion image pushed to ECR.
 
 ## Render day: capture → dataset
 
+This is the manual EasySynth path. Runs published by the `drone-synth-render`
+orchestrator skip steps 1–3 — they land in `raw/` already complete and trigger
+their own conversion, so pick those up at step 5.
+
 ### 1. Render the capture in UE 5.5 + EasySynth
 
 Two rendering passes from the **identical camera path**: the normal render
