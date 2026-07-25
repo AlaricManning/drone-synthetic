@@ -4,14 +4,19 @@ A run directory without a manifest is incomplete by definition — ingest
 writes the manifest only after every frame is in place, so a crashed or
 half-finished ingest can never be mistaken for a real run. The manifest is
 also the run's provenance record: what was rendered, from what scene, and
-(for future captures) under which domain-randomization parameters.
+under which domain-randomization parameters.
+
+Compatibility rule for producers: a field that only adds information keeps
+``schema_version`` at 1 and is ignored by readers too old to know it. Bump the
+version only for a change that would make an older reader wrong -- renaming a
+field, changing its units, or altering what an existing one means.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import date
 from pathlib import Path
 
@@ -34,7 +39,9 @@ class RunManifest:
     ue_map: str
     drone_model: str
     camera_sequence: str
-    # reserved for in-Unreal domain randomization; empty until that exists
+    # domain-randomization parameters as flat scalars, so datasets stay
+    # comparable across captures: distance_start_cm, yaw_deg, time_of_day and
+    # the like. Empty for a capture that randomizes nothing.
     randomization: dict = field(default_factory=dict)
     seed: int | None = None
     schema_version: int = SCHEMA_VERSION
@@ -66,8 +73,12 @@ class RunManifest:
             raise ManifestError(
                 f"unsupported manifest schema_version {version!r} (expected {SCHEMA_VERSION})"
             )
+        # Drop fields this reader does not know. A capture repo may record more
+        # than we consume, and a manifest that is newer than us is not the same
+        # thing as a manifest that is wrong. Missing required fields still raise.
+        known = {f.name for f in fields(cls)}
         try:
-            return cls(**data)
+            return cls(**{k: v for k, v in data.items() if k in known})
         except TypeError as exc:
             raise ManifestError(f"malformed manifest: {exc}") from exc
 
