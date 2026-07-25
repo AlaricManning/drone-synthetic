@@ -56,39 +56,60 @@ Windows (UE 5.5 + EasySynth)
 
 ## Where this fits in the larger system
 
-This repo is one station of a detection data flywheel, alongside
+This repo is one station of a detection data flywheel spanning four
+repositories. [drone-synth-render](https://github.com/AlaricManning/drone-synth-render)
+renders the synthetic captures this pipeline converts;
 [object-tracker](https://github.com/AlaricManning/object-tracker) and
-[object-tracker-pipeline](https://github.com/AlaricManning/object-tracker-pipeline).
-COCO has no `drone` class, so the tracker's stock YOLOv11 cannot detect
-drones — custom-trained weights are required, and this pipeline manufactures
-the labeled data that trains them:
+[object-tracker-pipeline](https://github.com/AlaricManning/object-tracker-pipeline)
+capture and catalog real footage at the edge. Both branches serve one end
+goal — fine-tuning a YOLO model that can detect drones, which stock YOLOv11
+cannot, because COCO has no `drone` class.
 
-```
-┌─ drone-synthetic (this repo) ──┐
-│ UE renders → runs → datasets/vN ──► training (external for now)
-└────────────────────────────────┘        │ drone-capable YOLO weights
-                                          ▼
-┌─ object-tracker (edge) ────────────────────────────┐
-│ custom weights replace stock yolo11n; "drone"      │
-│ becomes the target class → clips + KLV → s3 raw/   │
-└────────────────────────┬───────────────────────────┘
-                         ▼
-┌─ object-tracker-pipeline ──────────────────────────┐
-│ KLV → Parquet catalog → Athena/DuckDB              │
-└────────────────────────┬───────────────────────────┘
-                         │  query: where does the model struggle?
-                         ▼
-        findings → domain-randomization params in the
-        next runs' manifests → new datasets → retrain ──┐
-                         ▲──────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph real["real capture · object-tracker-am"]
+        T["<b>object-tracker</b> · edge<br/>YOLOv11 + Norfair on a target COCO class<br/>clip.ts + binary KLV"]
+        CAT["<b>object-tracker-pipeline</b><br/>KLV → partitioned Parquet<br/>DuckDB / Athena"]
+        LBL["labeling station · <i>planned</i><br/>KLV boxes as pre-annotations,<br/>human corrects"]
+        T -->|"raw/{session_id}/"| CAT
+        CAT -->|"query near_misses"| LBL
+    end
+
+    subgraph syn["synthetic capture · drone-synthetic-am"]
+        R["<b>drone-synth-render</b><br/>UE 5.5 + MRQ · seeded runs"]
+        D["<b>drone-synthetic</b> · this repo<br/>mask → boxes → canonical JSON → YOLO + QC"]
+        DS["datasets/vN"]
+        R -->|"raw/{run_id}/, manifest last"| D --> DS
+    end
+
+    FT{{"fine-tune YOLO · <i>planned</i>"}}
+
+    LBL -->|"labeled real frames"| FT
+    DS -->|"labeled synthetic frames"| FT
+    FT -.->|"drone-capable weights"| T
+    CAT -.->|"where the model is unsure →<br/>randomization params for the next runs"| R
 ```
 
-The tracker's `near_misses` confidence tier is ready-made hard-example
-mining: queries over real detections show where the model is unsure, and
-those findings become domain-randomization parameters in the next capture
-runs' manifests (the reserved `randomization`/`seed` fields are the return
-path). Real clips from the field are also the only true eval set — the
-synthetic run-level val split measures sim-to-sim generalization only.
+The two branches run in parallel and converge at fine-tuning. Synthetic
+capture supplies labeled frames cheaply — the mask pass gives ground truth for
+free — while the edge supplies the real-world distribution no renderer
+reproduces. Neither substitutes for the other.
+
+The real branch is not trainable yet, and the missing piece is labels. KLV
+records what the model *predicted*, not what was actually there, so those clips
+need a review step before they can train or even evaluate anything: scoring
+precision against your own predictions returns 100% by construction. The
+`near_misses` tier is the natural queue — it is where the model was unsure, so
+it is where correction buys the most — and the catalog already puts that queue
+one query away. If the labeling station emits the same canonical annotation
+schema this pipeline writes, combining the branches is a concatenation rather
+than an integration.
+
+Ordering matters as well. The edge only records when it detects its target
+class, so it cannot capture drone clips until a model can already detect
+drones. v1 weights come from synthetic data alone, and the real branch starts
+contributing only once those are deployed — the dashed edges above are that
+second lap.
 
 The systems couple through artifacts, never code: dataset version → model
 weights → KLV catalog → randomization params. Separate buckets, separate
@@ -98,7 +119,7 @@ IAM identities.
 
 - **Runs are the atomic unit.** Each capture session is one immutable
   `run_id` with a manifest recording UE map, drone model, camera path, capture
-  date, and (later) domain-randomization parameters and seed. Runs are the
+  date, and the domain-randomization parameters and seed behind it. Runs are the
   unit of ingest, QC, provenance, and train/val splitting. Ingest writes the
   manifest only after every frame is in place, so a run without a manifest is
   always debris from a failed ingest, never a real run — and a run with one
