@@ -19,6 +19,14 @@ run-complete signal) and a small Lambda submits the Batch job, writing
 dataset version `auto-<run_id>`. Manual `dronesynth submit` remains for
 curated multi-run versions and re-runs.
 
+Two things write to `raw/`. The diagram below is the manual path: an EasySynth
+capture that `dronesynth ingest` validates and uploads. The other is
+[drone-synth-render](https://github.com/AlaricManning/drone-synth-render), an
+Unreal orchestrator that renders unattended and publishes finished runs itself
+— same layout, same manifest-last protocol, but it never calls `dronesynth
+ingest`, so this pipeline first sees those runs when EventBridge fires. Each
+producer has its own put-only identity; see [Security model](#security-model).
+
 ```
 Windows (UE 5.5 + EasySynth)
 ┌──────────────────────────────────────────┐
@@ -122,10 +130,15 @@ IAM identities.
 | Identity       | Permissions                                  | Used by                 |
 |----------------|----------------------------------------------|-------------------------|
 | ingest user    | put-only on `raw/*` — no list, no delete     | `dronesynth ingest`     |
+| render user    | put-only on `raw/*` — no list, no delete     | the `drone-synth-render` render box |
 | batch job role | read `raw/*`; write `datasets/*` and `qc/*`  | the Fargate conversion job |
 | admin          | full                                         | Terraform applies, browsing |
 
-Leaked ingest credentials must not allow enumerating or deleting captured
+The two producers hold separate keys with the identical grant, so either can be
+rotated or revoked without interrupting the other and every write under `raw/`
+is attributable to the machine that made it.
+
+Leaked capture credentials must not allow enumerating or deleting captured
 data. No credentials live in this repo, tracked or otherwise. All AWS
 resources are provisioned by Terraform in `infra/`.
 
@@ -216,11 +229,13 @@ terraform init
 terraform apply -var bucket_name=drone-synthetic-am
 ```
 
-The ingest access key is created outside Terraform (state files store
-secrets in plaintext) and lives only in `~/.aws/credentials`:
+The capture access keys are created outside Terraform (state files store
+secrets in plaintext) and live only in `~/.aws/credentials` on the machine
+that needs them:
 
 ```bash
 aws iam create-access-key --user-name drone-synth-ingest
+aws iam create-access-key --user-name drone-synth-render
 ```
 
 ## Development setup

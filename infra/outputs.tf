@@ -9,8 +9,13 @@ output "raw_root" {
 }
 
 output "ingest_user" {
-  description = "Put-only IAM user for the capture machine"
+  description = "Put-only IAM user for the operator running dronesynth ingest"
   value       = aws_iam_user.ingest.name
+}
+
+output "render_user" {
+  description = "Put-only IAM user for the Unreal render box publishing its own runs"
+  value       = aws_iam_user.render.name
 }
 
 output "ecr_repository_url" {
