@@ -43,6 +43,12 @@ class RunManifest:
     # comparable across captures: distance_start_cm, yaw_deg, time_of_day and
     # the like. Empty for a capture that randomizes nothing.
     randomization: dict = field(default_factory=dict)
+    # Which build of the producer rendered the run -- repo, commit, and whether
+    # its tree was dirty. Every other field here describes what was asked for;
+    # this one describes what answered, and it is the only way to separate two
+    # generations of data whose difference lives in the renderer rather than in
+    # the config. Empty for a producer that does not report it.
+    generator: dict = field(default_factory=dict)
     seed: int | None = None
     schema_version: int = SCHEMA_VERSION
 
