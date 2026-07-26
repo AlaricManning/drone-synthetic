@@ -8,19 +8,18 @@ class_map:
 mask:
   # A pixel belongs to the drone if any channel exceeds this value.
   #
-  # Not just a noise floor: the mask pass paints the drone with a flat bright
-  # material, and at close range that material bounces light onto the terrain,
-  # so ground hundreds of pixels away reads 13-31 instead of 0. Anything under
-  # 32 lets that indirect light into the silhouette, which used to be harmless
-  # only because each speck was too small to survive min_box_area. Now that a
-  # frame's pixels are grouped into one object it would stretch the box across
-  # the lit ground instead, so the threshold is what keeps it out.
+  # Not just a noise floor, for runs captured before 2026-07-26. Their mask pass
+  # ran with temporal AA on, which kept a fading copy of the drone's earlier
+  # positions in frame -- readable at 13-31, hundreds of pixels from the
+  # airframe. That was harmless while each speck was too small to survive
+  # min_box_area on its own, but a frame's pixels are grouped into one object
+  # now, so a ghost would stretch the box back towards the start of the clip.
+  # 32 clears it while costing at most 2 px of box width.
   #
-  # 32 measured best on run_20260726_013904_502: it drops the bounce entirely
-  # (the worst frame goes from 28 islands to 3, fill ratio from 0.08 to 0.36)
-  # while changing box width by at most 2 px, and going higher starts chipping
-  # the airframe apart instead. The renderer should stop bouncing mask light in
-  # the first place -- see docs/plans/instance-boxes.md.
+  # drone-synth-render disables TAA for the mask pass as of that date, and those
+  # renders come out as a true matte: identical labels anywhere from >2 to >128.
+  # This stays at 32 for the older runs, not because it is still doing work.
+  # See docs/plans/instance-boxes.md.
   threshold: 32
   # Boxes smaller than this many pixels are dropped as mask noise. Applies to
   # the assembled object, not to its pieces.

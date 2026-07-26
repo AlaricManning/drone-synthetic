@@ -6,8 +6,8 @@ class_map:
   0: drone
 
 mask:
-  # See convert.yaml for why 32 and not lower: below it the mask pass's bounced
-  # light off nearby terrain reads as drone.
+  # See convert.yaml for why 32 and not lower: runs captured before 2026-07-26
+  # carry temporal-AA ghosts of the drone that read as drone below it.
   threshold: 32
   min_box_area: 16
 

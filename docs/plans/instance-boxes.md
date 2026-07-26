@@ -93,15 +93,31 @@ Re-converting 502 gave the right box count immediately, and a fill ratio that
 had collapsed from 0.37 to 0.08 on the first few frames. Grouping was stretching
 boxes across the frame.
 
-The mask frames turned out to contain faint static specks reading 13–31,
-hundreds of pixels from the drone, on pixels whose RGB is tan terrain. They
-decay from 21 to 1 as the drone recedes and are absent from seeds whose drone
-never gets close. **The mask material bounces light onto the ground**, so the
-mask pass is not the clean matte the pipeline assumed.
+The mask frames turned out to contain faint specks reading 13–31, hundreds of
+pixels from the drone, decaying from 21 to 1 over the clip and absent from seeds
+whose drone never gets close. The first reading of that was **indirect light
+from the mask material bouncing onto terrain** — the RGB under those pixels
+looked tan, and proximity to the drone explained the decay.
 
-This had always been there. It was invisible only because each speck was too
-small to clear `min_box_area` as its own component — the old bug was hiding it.
-Grouping made it load-bearing.
+That was wrong, and the correction matters because it changes where the fix
+belongs. The RGB sample was a BGR triple read in the wrong order: `[196,158,114]`
+is sky blue, not tan ground. Amplifying the mask background twelvefold showed
+what the specks are — **a fading outline of the drone itself**, at the position
+it occupied on frame 0, still legible twenty frames later. It is temporal AA
+history. `drone-synth-render` renders the mask with eight spatial samples and
+one temporal sample, which stops samples accumulating *within* a frame but
+leaves TAA's history *between* frames, and the mask material is bright enough
+that a stale frame survives the blend at values in the twenties.
+
+Two experiments separated the hypotheses. Hiding every actor but the drone
+during the mask pass, which would have removed any bounce surface, changed the
+background by nothing at all — identical values on every frame. Disabling TAA
+for that pass took the background to exactly zero.
+
+Either way the conclusion that mattered here holds: the mask pass was not the
+clean matte the pipeline assumed. It had always been so, and was invisible only
+because each speck was too small to clear `min_box_area` as its own component —
+the old bug was hiding it. Grouping made it load-bearing.
 
 Threshold 32 rejects it. Measured on 502:
 
@@ -122,16 +138,39 @@ measurement was right and the conclusion was wrong: width only ever tracked the
 largest island, so it could not see the thing the threshold was actually holding
 back.
 
-## Follow-up for drone-synth-render
+## Fixed at the source, same day
 
-The bounce should not be in the mask render at all. The mask pass wants unlit
-shading or Lumen disabled, so the only lit pixels are the drone's own. Until
-then the threshold is doing that job, which works but couples the converter to a
-renderer artefact.
+`drone-synth-render` now disables TAA for the mask pass and hides every actor but
+the drone while it renders. Re-rendering seed 502 with those changes:
 
-Also unchanged: the propellers still fragment. Grouping makes it harmless to the
-box, and the `mask in N pieces` flag reports it rather than hiding it — 20 such
-flags remain on 502 at threshold 32. Motion blur is the fix.
+| | components for 60 frames | frames fragmented | worst frame | min fill |
+| --- | --- | --- | --- | --- |
+| before, `>12` | 73 | 31 | 28 pieces | 0.076 |
+| before, `>32` | 69 | 20 | 3 pieces | 0.357 |
+| **after, `>12`** | **60** | **0** | **1 piece** | 0.373 |
+| **after, `>32`** | **60** | **0** | **1 piece** | 0.360 |
+
+Sixty components for sixty frames: one clean silhouette each, and the same
+result at both thresholds. Box size now moves by 1.3% across thresholds from
+`>2` to `>128`, so the threshold has stopped being a tuning knob.
+
+The propeller fragmentation went with it, which was not expected — it had been
+attributed to sub-pixel arms and filed as needing motion blur. TAA was blending
+those thin arms against a jittered history and losing the coverage that connects
+blade to airframe; eight spatial samples with no history resolve them. That is
+about fragmentation at these ranges only. The mask-width oscillation past ~125 m
+in `drone-synth-render`'s `scale-range.md` is a separate measurement taken with
+TAA on and wants re-probing before anything is concluded about it.
+
+**`min_box_area` stays at 32.** Not because it is load-bearing any more, but
+because every run captured before this fix still carries the ghosts, and the
+converter has to keep reading them correctly.
+
+None of this makes the grouping redundant. It is what stops an occluder splitting
+a label once backgrounds arrive, it is the shape multi-target needs, and it costs
+nothing. What changed is its role: it was the fix, and it is now the safety net,
+with `components > 1` restored to meaning a real render problem rather than
+routine noise.
 
 ## Validation
 
