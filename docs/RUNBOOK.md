@@ -128,10 +128,20 @@ the repo file does nothing to cloud jobs until the image is rebuilt and
 pushed:
 
 ```bash
-docker build -f docker/Dockerfile -t dronesynth-convert .
+scripts/build_image.sh
 docker tag dronesynth-convert:latest 935961368629.dkr.ecr.us-east-1.amazonaws.com/dronesynth-convert:latest
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 935961368629.dkr.ecr.us-east-1.amazonaws.com
 docker push 935961368629.dkr.ecr.us-east-1.amazonaws.com/dronesynth-convert:latest
+```
+
+Use `scripts/build_image.sh` rather than `docker build` directly: it stamps the
+current commit into the image, which every dataset the image converts then
+records in its provenance sidecar. A hand-built image converts fine but records
+an unknown commit, and the deploys worth tracing are exactly the ones done in a
+hurry. Check what a pushed image claims with:
+
+```bash
+docker run --rm --entrypoint printenv dronesynth-convert DRONESYNTH_GIT_COMMIT
 ```
 
 Jobs pick up `:latest` on their next start — no terraform needed. The same

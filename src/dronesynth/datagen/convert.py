@@ -10,7 +10,11 @@ dataset, qc) may independently be local paths or s3:// URIs:
 - outputs are *published* through the storage layer — written in place when
   the destination is local, uploaded when it is S3.
 
-Deterministic: (run frames, config) fully determine every output byte.
+The labels are deterministic: (run frames, config) fully determine every
+annotation, YOLO file and QC number. The provenance sidecar is the deliberate
+exception — it records the converter's commit and the time of conversion, which
+are facts about the build rather than about the frames, and exists so that
+"same config" is a checkable claim instead of an assumed one.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from dronesynth.datagen.qc import QcReport, compute_qc, render_debug_frame, writ
 from dronesynth.datagen.split import split_runs
 from dronesynth.datagen.yolo import ExportItem, export_yolo
 from dronesynth.ingest.manifest import MANIFEST_FILENAME, ManifestError, RunManifest
+from dronesynth.provenance import PROVENANCE_SUFFIX, run_provenance, write_provenance
 from dronesynth.storage import LocalStorage, Storage, StorageKeyMissing, storage_for
 
 
@@ -116,7 +121,17 @@ def convert_run(
         ]
 
         dataset_dir = _out_dir(dataset_storage, dataset_version, workdir, "dataset")
-        write_annotations(annotations, dataset_dir / "annotations" / f"{run_id}.json")
+        annotations_dir = dataset_dir / "annotations"
+        write_annotations(annotations, annotations_dir / f"{run_id}.json")
+        write_provenance(
+            run_provenance(
+                run_id,
+                threshold=config.mask.threshold,
+                min_box_area=config.mask.min_box_area,
+                class_map=config.class_map,
+            ),
+            annotations_dir / f"{run_id}{PROVENANCE_SUFFIX}",
+        )
 
         assignments = split_runs([run_id], config.split.val_runs)
         items = [

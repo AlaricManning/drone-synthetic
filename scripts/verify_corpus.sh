@@ -14,14 +14,18 @@ SNAPSHOT=${SNAPSHOT:-/tmp/s3_keys.txt}
 QC_DIR=${QC_DIR:-/tmp/qc_reports}
 # Frames per clip, which fixes how many objects a complete run owns:
 #   raw      frames rgb + frames mask + manifest.json + job.json
-#   dataset  frames images + frames labels + annotations json + dataset.yaml
+#   dataset  frames images + frames labels + annotations json + provenance
+#            sidecar + dataset.yaml
 #   qc       frames debug renders + report.json
+#
+# Runs converted before the provenance sidecar landed have one object fewer
+# under datasets/, so a mixed set will report mismatches for the older ones.
 FRAMES=${FRAMES:-60}
 
 run_file=${1:?usage: verify_corpus.sh <run-id-file>}
 
 want_raw=$((FRAMES * 2 + 2))
-want_ds=$((FRAMES * 2 + 2))
+want_ds=$((FRAMES * 2 + 3))
 want_qc=$((FRAMES + 1))
 
 echo "=== presence: raw / dataset / qc (want $want_raw/$want_ds/$want_qc) ==="

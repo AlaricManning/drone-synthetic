@@ -72,9 +72,9 @@ Windows (UE 5.5 + EasySynth)
             mask threshold → boxes → canonical JSON → YOLO export → QC
                  │
                  ▼
-        s3://<bucket>/datasets/<version>/   canonical per-frame annotations
-            ├── annotations/                 + YOLO images/labels layout
-            └── yolo/
+        s3://<bucket>/datasets/<version>/   canonical per-frame annotations,
+            ├── annotations/                 a provenance sidecar per run,
+            └── yolo/                        + YOLO images/labels layout
         s3://<bucket>/qc/<run_id>/          QC report + debug box renders
 ```
 
@@ -169,6 +169,14 @@ IAM identities.
 - **Datasets are versioned and deterministic.** A dataset version is fully
   determined by (input runs, conversion config). Same inputs, same output,
   always re-derivable.
+- **Every conversion records the build and config behind it.** Alongside each
+  run's annotations sits `<run_id>.provenance.json`, naming the converter commit
+  and the mask settings the labels were produced under. Without it "same
+  conversion config" is an assumption rather than a checkable claim: the mask
+  threshold moved from 12 to 32 on 2026-07-26, which changed every label and
+  left no trace in the output. Because the container has no `.git`, the commit
+  is baked into the image at build time — use `scripts/build_image.sh`, which
+  computes it, rather than a bare `docker build`.
 - **The train/val split ships with the dataset, run-level, never
   frame-level.** Consecutive frames from one camera path are near-duplicate
   images, so a random frame-level split leaks train data into val and
@@ -265,10 +273,15 @@ To run the conversion as the container does in production — everything in
 and out of S3, using `configs/convert.s3.yaml`:
 
 ```bash
-docker build -f docker/Dockerfile -t dronesynth-convert .
+scripts/build_image.sh
 docker run --rm -v ~/.aws:/home/app/.aws:ro -e AWS_PROFILE=default \
   dronesynth-convert --run-id run_0001 --version v001
 ```
+
+`build_image.sh` wraps `docker build` only to stamp the current commit into the
+image, since the converter cannot work that out from inside a container that
+holds no `.git`. Building by hand still works and produces a usable image; its
+datasets just record an unknown converter commit.
 
 Credentials are never baked into the image: locally they come from the
 read-only `~/.aws` mount; on Batch they come from the job role.
