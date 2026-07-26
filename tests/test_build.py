@@ -10,6 +10,7 @@ from dronesynth.config import ConfigError, load_build_config
 from dronesynth.datagen.build import BuildError, DatasetManifest, build_dataset
 from dronesynth.datagen.split import SplitError
 from dronesynth.ingest.manifest import RunManifest
+from dronesynth.storage import LocalStorage, StorageNotPermitted
 
 CONVERSION = {"threshold": 32, "min_box_area": 16, "class_map": {"0": "drone"}}
 CONVERTER = {"repo": "drone-synthetic", "commit": "abc1234567", "dirty": False}
@@ -218,6 +219,21 @@ def test_rebuilding_a_version_is_refused(corpus):
     build_dataset(version="v002", config=config)
 
     with pytest.raises(BuildError, match="already exists"):
+        build_dataset(version="v002", config=config)
+
+
+def test_rebuilding_is_refused_even_when_the_preflight_check_cannot_look(corpus, monkeypatch):
+    """The build role holds no ListBucket, so S3 cannot tell an absent key from a
+    forbidden one. Immutability has to hold on the manifest write alone."""
+    config = build_config(corpus, ["run_a"])
+    build_dataset(version="v002", config=config)
+
+    def blind(self, key):
+        raise StorageNotPermitted("credentials lack read access")
+
+    monkeypatch.setattr(LocalStorage, "exists", blind)
+
+    with pytest.raises(BuildError, match="already has a manifest"):
         build_dataset(version="v002", config=config)
 
 
