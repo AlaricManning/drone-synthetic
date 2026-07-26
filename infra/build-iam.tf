@@ -20,6 +20,12 @@
 # Notably absent: s3:ListBucket. A build is told which runs it is assembling, so
 # it never enumerates the bucket; every key it reads is one it derived from its
 # config. Nothing here can discover data it was not pointed at.
+#
+# The price: without ListBucket, S3 answers a HEAD on a key that does not exist
+# with 403 rather than 404, so this role cannot distinguish absent from
+# forbidden. The build's pre-flight "does this version exist" check is therefore
+# best-effort, and immutability rests on the if-absent manifest write instead —
+# the same protocol that holds for the put-only capture identities above.
 
 locals {
   # Falling back to whoever is applying, rather than to nobody. An apply that

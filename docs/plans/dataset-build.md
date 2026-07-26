@@ -348,4 +348,38 @@ already trusts `ecs-tasks` so that when the Batch path does land, it needs no
 IAM change and gets grants identical to the local one — which was the point of
 having a distinct role.
 
-Not yet done: the 50-run corpus build itself.
+## What the first real build corrected
+
+**v002 exists**: 50 runs, 3000 frames, 3000 boxes, 2400 train and 600 val across
+a 40/10 run split, at `s3://drone-synthetic-am/datasets/v002`. Verified
+independently of the build's own report — 6002 objects, every image paired with a
+label, sampled copies byte-identical to their sources by ETag, sampled labels
+reproducing exactly when recomputed from the annotations, and per-run frame and
+box counts reconciling against all 50 annotations files. QC flags 35 of 3000
+frames (1.2%): 33 tiny boxes at the far end of the approach, which is the small
+end we widened the range to get, and 2 frames noting a mask in two pieces, which
+instance grouping merges into one box.
+
+**The "no ListBucket" grant broke the build on its first run.** The claim in the
+policy comment was true — a build is told its inputs and never enumerates — but
+incomplete: without `ListBucket`, S3 answers a HEAD on an absent key with 403
+rather than 404, so the role cannot distinguish absent from forbidden. The
+pre-flight "does this version already exist" check therefore failed outright
+instead of proceeding. The fix keeps the grant and makes the check best-effort,
+tolerating `StorageNotPermitted` exactly as ingest already does for its put-only
+credentials; immutability rests on the if-absent manifest write, which is what
+`write_text_if_absent`'s docstring said all along. Least privilege survived a
+real encounter with S3's semantics, and the policy comment now records the price.
+
+**The chain resolves end to end for a real dataset**: renderer `11075f335e`,
+converter `432f7111c5`, builder `c7d2a8fb60`, all clean, one converter build and
+one mask config across all 50 runs, threshold 32. Scene identities are unique
+across the whole corpus, so nothing straddles the split — the duplicate-render
+hazard that motivated the check is absent from this build rather than merely
+handled.
+
+Worth knowing before the next build: it took 23 minutes. The 6000 requests go
+out one at a time, and at S3 latency that is the whole cost — negligible CPU,
+no bytes transferred. Batching them would cut it to minutes, which matters once
+a corpus is thousands of runs rather than fifty, and is a better first
+optimisation than moving the build to Batch.

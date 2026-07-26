@@ -39,7 +39,13 @@ from dronesynth.datagen.split import split_runs
 from dronesynth.datagen.yolo import dataset_yaml_text, yolo_label_lines
 from dronesynth.ingest.manifest import MANIFEST_FILENAME, ManifestError, RunManifest
 from dronesynth.provenance import PROVENANCE_SUFFIX, RunProvenance, converter_stamp
-from dronesynth.storage import Storage, StorageKeyExists, StorageKeyMissing, storage_for
+from dronesynth.storage import (
+    Storage,
+    StorageKeyExists,
+    StorageKeyMissing,
+    StorageNotPermitted,
+    storage_for,
+)
 
 DATASET_MANIFEST_FILENAME = "manifest.json"
 SCHEMA_VERSION = 1
@@ -289,11 +295,20 @@ def build_dataset(version: str, config: BuildConfig) -> BuildResult:
     datasets = storage_for(config.storage.dataset_root)
 
     manifest_key = f"{version}/{DATASET_MANIFEST_FILENAME}"
-    if datasets.exists(manifest_key):
-        raise BuildError(
-            f"dataset version {version} already exists at {datasets.describe(version)} — "
-            f"versions are immutable; build a new one"
-        )
+    # Best-effort, so naming an existing version fails before the frames are
+    # copied rather than after. It can only ever be an optimisation: S3 answers a
+    # HEAD on an absent key with 403 rather than 404 unless the caller holds
+    # ListBucket, and the build role deliberately holds none, since a build is
+    # told its inputs and never enumerates. The if-absent manifest write below is
+    # what actually enforces immutability.
+    try:
+        if datasets.exists(manifest_key):
+            raise BuildError(
+                f"dataset version {version} already exists at {datasets.describe(version)} — "
+                f"versions are immutable; build a new one"
+            )
+    except StorageNotPermitted:
+        pass
 
     inputs = [_gather_run(run_id, raw, datasets) for run_id in config.runs]
     conversion, converter = _require_comparable(inputs)
@@ -364,8 +379,10 @@ def build_dataset(version: str, config: BuildConfig) -> BuildResult:
         )
     except StorageKeyExists as exc:
         raise BuildError(
-            f"dataset version {version} was completed by another build while this "
-            f"one was running; this build's frames are debris"
+            f"dataset version {version} already has a manifest at "
+            f"{datasets.describe(manifest_key)} — either it was built before, or "
+            f"another build completed it while this one was running. Versions are "
+            f"immutable, so this build's frames are debris; build a new version"
         ) from exc
 
     return BuildResult(manifest=manifest, location=datasets.describe(version))

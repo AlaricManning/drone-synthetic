@@ -344,6 +344,11 @@ opposite sides of the split. There is one build config per dataset version,
 tracked in git, because which runs a dataset trains on is the decision most
 worth being able to look up later.
 
+`v002` is the current dataset: 50 runs, 3000 frames, 2400 train and 600 val on a
+40/10 run split, labels at threshold 32. Expect a build of that size to take
+around 20 minutes — it transfers no image bytes, so the time is almost entirely
+the per-request round trips.
+
 ## Infrastructure
 
 AWS resources are managed by Terraform in `infra/` and applied manually with
