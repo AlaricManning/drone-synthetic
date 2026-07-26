@@ -143,16 +143,29 @@ IAM identities.
 
 - **Runs are the atomic unit.** Each capture session is one immutable
   `run_id` with a manifest recording UE map, drone model, camera path, capture
-  date, and the domain-randomization parameters and seed behind it. Runs are the
+  date, the domain-randomization parameters and seed behind it, and a
+  `generator` stamp naming the producing repo and commit. That last field
+  exists because config alone does not identify a build: when the renderer
+  changes without the config changing, the commit is the only thing that
+  separates one generation of data from the next. Runs are the
   unit of ingest, QC, provenance, and train/val splitting. Ingest writes the
   manifest only after every frame is in place, so a run without a manifest is
   always debris from a failed ingest, never a real run — and a run with one
   is immutable: re-ingesting an existing id is an error.
 - **Canonical JSON annotations; YOLO is an export.** Mask renders carry
   segmentation information for free. Conversion writes per-frame JSON
-  (boxes, mask area, fill ratio) as the source of truth and generates the
-  YOLO layout from it, so future COCO or segmentation exports are new
-  exporters, not rewrites.
+  (boxes, mask area, fill ratio, component count) as the source of truth and
+  generates the YOLO layout from it, so future COCO or segmentation exports
+  are new exporters, not rewrites.
+- **One object is one box, whatever the mask does.** Pixels are grouped by
+  object, not by connectivity. The mask pass paints only the drone, so which
+  object a pixel belongs to is known rather than inferred, and connectivity
+  is a fact about rasterisation that only happened to stand in for it. It
+  stopped standing in when propeller blades began detaching at oblique
+  headings and each island became its own label, asserting that a 13x4 sliver
+  inside a drone was a whole drone. The component count survives on the box
+  so QC can still flag a fragmented mask as worth a look; see
+  [docs/plans/instance-boxes.md](docs/plans/instance-boxes.md).
 - **Datasets are versioned and deterministic.** A dataset version is fully
   determined by (input runs, conversion config). Same inputs, same output,
   always re-derivable.
@@ -163,12 +176,17 @@ IAM identities.
   since the sequence structure isn't visible in a folder of PNGs. As with
   COCO and ImageNet, the producer defines the split: whole runs are held
   out via `split.val_runs` in the config, and frame-level splitting is
-  rejected outright. (With one run captured, val is empty until the first
-  held-out run is added.)
+  rejected outright. (`split.val_runs` is still empty, so every run converted
+  so far lands in train. Setting it is not currently possible — conversion is
+  per-run and rejects a val list naming runs outside the run being converted —
+  and no step assembles runs into a dataset that could carry a split. See
+  [docs/plans/dataset-build.md](docs/plans/dataset-build.md).)
 - **QC is the proof of quality.** Nothing downstream trains on this data
   within the pipeline, so the QC report (boxes per frame, box size
-  distribution, mask fill ratio, empty-frame counts, flagged outliers) and
-  debug renders are the evidence the labels are good.
+  distribution, mask fill ratio, empty-frame counts, and flagged outliers —
+  tiny boxes, low fill, boxes touching the frame edge, and masks that arrived
+  in more than one piece) and debug renders are the evidence the labels are
+  good.
 
 ## Security model
 
@@ -199,6 +217,9 @@ src/dronesynth/
   storage/             local/S3 abstraction — same code both sides
   batch.py             job submission to AWS Batch
   cli.py               ingest / convert / submit entrypoints
+scripts/               operator tooling: bucket snapshot/prune, job resubmit
+                       and wait, corpus verification, README figure generation
+assets/                README figures, generated from a converted run
 docker/                the conversion job image Batch runs
 docs/                  RUNBOOK.md — operator procedures
 docs/plans/            dated decision records, one per substantial change
@@ -294,5 +315,7 @@ dronesynth --help
 pytest
 ```
 
-Development happens in WSL; EasySynth captures on the Windows side are read
-via `/mnt/c/datasets` during local development and via S3 in production.
+Development happens in WSL. Captures ingested by hand are read from the
+Windows side via `/mnt/c/datasets` during local development and via S3 in
+production; runs published by `drone-synth-render` only ever arrive through
+S3, since it uploads them itself.
