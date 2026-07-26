@@ -235,7 +235,9 @@ the source and `PutObject` on the destination, both of which the build role has.
 
 ## What lands, in order
 
-1. `copy_key` on the `Storage` ABC and both backends.
+1. `copy_from` on the `Storage` ABC and both backends. Named for a source
+   storage rather than the key-to-key `copy_key` sketched above, because raw
+   and datasets are separate `Storage` instances even when they share a bucket.
 2. Per-run converter provenance: a `provenance.json` sidecar beside the
    annotations recording converter repo, commit, dirty flag, and the mask
    config the labels were produced under. A sidecar rather than a wrapper
