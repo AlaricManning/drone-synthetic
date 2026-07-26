@@ -36,6 +36,33 @@ def test_randomization_defaults_empty():
     assert m.seed is None
 
 
+# --- generator ----------------------------------------------------------------
+# Which build of the producer rendered a run. Everything else in the manifest
+# says what was asked for, and a renderer change can alter every frame without
+# touching any of it -- as disabling temporal AA in the mask pass did.
+
+
+def test_generator_round_trips(tmp_path):
+    stamp = {"repo": "drone-synth-render", "commit": "f041142abc", "dirty": False}
+    original = manifest(generator=stamp, seed=1000)
+    write_manifest(original, tmp_path)
+    assert read_manifest(tmp_path).generator == stamp
+
+
+def test_generator_defaults_empty_for_a_producer_that_omits_it():
+    # Runs captured before the producer reported this still ingest. They are
+    # distinguishable by the emptiness, which is the honest answer for them.
+    assert manifest().generator == {}
+
+
+def test_generator_separates_two_builds_of_the_same_config():
+    # The case the field exists for: identical inputs, different renderer.
+    before = manifest(generator={"repo": "drone-synth-render", "commit": "cd37edb111"})
+    after = manifest(generator={"repo": "drone-synth-render", "commit": "f041142abc"})
+    assert before.randomization == after.randomization
+    assert before.generator != after.generator
+
+
 def test_bad_run_id_rejected():
     for bad in ("Run_0001", "run/0001", "", "../etc"):
         with pytest.raises(ManifestError, match="run_id"):
