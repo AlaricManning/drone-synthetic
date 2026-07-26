@@ -491,3 +491,12 @@ Development happens in WSL. Captures ingested by hand are read from the
 Windows side via `/mnt/c/datasets` during local development and via S3 in
 production; runs published by `drone-synth-render` only ever arrive through
 S3, since it uploads them itself.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Alaric Manning.
+
+Nothing here depends on an AGPL component; the dependencies are pyyaml, numpy,
+OpenCV, Pillow and boto3. Note that `object-tracker` in the same project is
+AGPL-3.0 because it runs Ultralytics YOLO, so training that model on datasets
+this pipeline produces is governed by Ultralytics' terms rather than these.
