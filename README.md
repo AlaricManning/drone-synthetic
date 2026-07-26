@@ -1,7 +1,7 @@
 # drone-synthetic
 
-Synthetic training-data pipeline for drone detection. UE 5.5 + EasySynth render
-paired frames — a normal render and a drone-on-black mask render from identical
+Synthetic training-data pipeline for drone detection. UE 5.5 renders paired
+frames — a normal render and a drone-on-black mask render from identical
 camera paths — and this pipeline turns those pairs into versioned, QC'd YOLO
 datasets. S3 is the system of record; conversion runs as a containerized job
 on AWS Batch.
@@ -39,13 +39,17 @@ run-complete signal) and a small Lambda submits the Batch job, writing
 dataset version `auto-<run_id>`. Manual `dronesynth submit` remains for
 curated multi-run versions and re-runs.
 
-Two things write to `raw/`. The diagram below is the manual path: an EasySynth
-capture that `dronesynth ingest` validates and uploads. The other is
+Two things write to `raw/`, and they render by different means. The diagram
+below is the manual path: an EasySynth capture that `dronesynth ingest`
+validates and uploads. The other is
 [drone-synth-render](https://github.com/AlaricManning/drone-synth-render), an
-Unreal orchestrator that renders unattended and publishes finished runs itself
-— same layout, same manifest-last protocol, but it never calls `dronesynth
-ingest`, so this pipeline first sees those runs when EventBridge fires. Each
-producer has its own put-only identity; see [Security model](#security-model).
+Unreal orchestrator that drives Movie Render Queue directly, renders
+unattended, and publishes finished runs itself — same layout, same
+manifest-last protocol, but it never calls `dronesynth ingest`, so this
+pipeline first sees those runs when EventBridge fires. Because it builds the
+mask pass rather than taking a plugin's, it can isolate the drone and disable
+temporal AA on that pass alone. Each producer has its own put-only identity;
+see [Security model](#security-model).
 
 ```
 Windows (UE 5.5 + EasySynth)
