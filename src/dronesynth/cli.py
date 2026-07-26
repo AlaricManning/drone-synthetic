@@ -70,7 +70,7 @@ def _convert(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="dronesynth",
-        description="UE5/EasySynth paired renders -> versioned YOLO datasets",
+        description="UE5 paired renders -> versioned YOLO datasets",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
