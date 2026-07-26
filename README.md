@@ -212,11 +212,21 @@ IAM identities.
 | ingest user    | put-only on `raw/*` — no list, no delete     | `dronesynth ingest`     |
 | render user    | put-only on `raw/*` — no list, no delete     | the `drone-synth-render` render box |
 | batch job role | read `raw/*`; write `datasets/*` and `qc/*`  | the Fargate conversion job |
+| build role     | read `raw/*` and `datasets/*`; write `datasets/*` | `dronesynth build` |
 | admin          | full                                         | Terraform applies, browsing |
 
 The two producers hold separate keys with the identical grant, so either can be
 rotated or revoked without interrupting the other and every write under `raw/`
 is attributable to the machine that made it.
+
+The build role is separate from the conversion job role rather than shared with
+it. Conversion has no reason to read `datasets/*`, so sharing would over-grant
+it; and a build needs exactly that read, so a build running as the conversion
+role would fail on `AccessDenied` while the identical code succeeded locally
+under admin. It is assumed rather than held as a key, so a one-off local build
+gets temporary credentials with the same grants a Batch build would have, and
+CloudTrail attributes it to a session. Neither the build role nor the conversion
+role can list the bucket: both are told what to read.
 
 Leaked capture credentials must not allow enumerating or deleting captured
 data. No credentials live in this repo, tracked or otherwise. All AWS
@@ -352,6 +362,19 @@ that needs them:
 ```bash
 aws iam create-access-key --user-name drone-synth-ingest
 aws iam create-access-key --user-name drone-synth-render
+```
+
+The build role is the exception to that pattern: it is assumed, not keyed, so
+there is no long-lived credential to create. `terraform apply` trusts whoever
+applied it, or pass `-var 'build_role_principals=["arn:aws:iam::…:user/you"]'`
+to name someone else. Add a profile that assumes it and `dronesynth build` picks
+it up like any other:
+
+```ini
+# ~/.aws/config
+[profile drone-synth-build]
+role_arn = arn:aws:iam::935961368629:role/dronesynth-build
+source_profile = default
 ```
 
 ## Development setup

@@ -18,6 +18,11 @@ output "render_user" {
   value       = aws_iam_user.render.name
 }
 
+output "build_role_arn" {
+  description = "Role to assume for `dronesynth build` (read raw + datasets, write datasets)"
+  value       = aws_iam_role.build.arn
+}
+
 output "ecr_repository_url" {
   description = "Where the conversion image gets pushed"
   value       = aws_ecr_repository.convert.repository_url
