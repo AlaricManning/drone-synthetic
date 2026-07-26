@@ -375,7 +375,12 @@ it up like any other:
 [profile drone-synth-build]
 role_arn = arn:aws:iam::935961368629:role/dronesynth-build
 source_profile = default
+region = us-east-1
 ```
+
+`region` is not optional here: it is resolved per profile and is not inherited
+from `source_profile`, so without it boto3 has no region and the build fails
+before it reads anything.
 
 ## Development setup
 
