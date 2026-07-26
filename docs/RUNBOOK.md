@@ -106,18 +106,58 @@ the drone; no boxes on empty sky. If the report lists flags, eyeball those
 frames first — that's what the flags are for. A dataset is not "good"
 until a human has looked.
 
-### 7. The deliverable
+### 7. Assemble a trainable dataset
+
+Everything so far is per-run: each conversion wrote its own `auto-<run_id>`
+version holding one run's frames. Those are staging, not a training set.
+Assembling one is a separate, explicit step.
+
+Write a build config naming exactly which runs go in and which are held out —
+one per dataset version, committed, since that is the record of intent —
+then build:
+
+```bash
+AWS_PROFILE=drone-synth-build \
+  dronesynth build --config configs/build.v002.s3.yaml --version v002
+```
+
+The profile assumes the build role (see the README's infrastructure section);
+admin also works but attributes nothing useful in CloudTrail. Frames are copied
+server-side, so nothing large moves through this machine, but it is still a few
+thousand requests — expect minutes, not seconds.
+
+The build refuses rather than guesses, and each refusal means something
+specific:
+
+| Message | Cause |
+| --- | --- |
+| `already exists` | versions are immutable; pick a new version name |
+| `different conversion configs` | inputs were converted under different mask settings; reconvert the odd ones |
+| `different converter builds` | same, for the converter commit |
+| `reconvert it before building` | a run predates the provenance sidecar |
+| `convert it before building` | a run was never converted |
+| `never ingested, or it has been pruned` | a named run is not in `raw/` |
+| `both sides of the split` | two renders of one scene straddle train/val — check for duplicate seeds |
+| `stale or the run is corrupt` | annotations disagree with the run manifest's frame count |
+
+### 8. The deliverable
 
 ```
 s3://drone-synthetic-am/datasets/<version>/
-  annotations/<run_id>.json    canonical per-frame annotations
-  yolo/                        images/, labels/, dataset.yaml
+  manifest.json                what this dataset is and everything that made it
+  yolo/                        images/{train,val}, labels/{train,val}, dataset.yaml
 ```
 
 Consumers download the `yolo/` tree; `dataset.yaml` uses relative paths, so
 it works wherever the tree is placed (ultralytics resolves `path: .`
 against its configured datasets directory — point it at the download
 location).
+
+`manifest.json` is what makes the dataset auditable later: the builder and
+converter commits, the mask config the labels came from, and for every input run
+its seed, randomization, map, drone model and renderer commit. It embeds those
+rather than pointing at run manifests, so pruning the inputs cannot cost the
+dataset the ability to explain itself.
 
 ---
 

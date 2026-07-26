@@ -1,7 +1,6 @@
 # Plan: assembling a trainable dataset
 
-Status: decided 2026-07-26; steps 1–3 implemented the same day, step 4 (the
-build role) outstanding. Unlike `instance-boxes.md` this was written before the
+Status: decided and implemented 2026-07-26. Unlike `instance-boxes.md` this was written before the
 work, so the body is a design record rather than a measurement; the
 [Validation](#validation) section at the end records what the implementation
 actually showed, including the two places the design was wrong.
@@ -260,7 +259,9 @@ name. Removing it would also cut ~90 MB of upload from every conversion job.
 
 It is deferred because it is a breaking change to a deployed path, and bundling
 it with a new build command makes both riskier. Once the build is proven, the
-per-run export has no consumer and can go.
+per-run export has no consumer and can go — and it should go in the same deploy
+as the `ENTRYPOINT` change the Batch build path needs, since both break the same
+deployed contract.
 
 **A separate val list in the conversion config.** `split` moves to the build
 config, since the split belongs to a dataset version. Relocating it costs
@@ -323,5 +324,28 @@ no labels in any run — verified by comparing every annotations file before and
 after, which also confirms the deployed code differed from the new image only by
 the provenance feature.
 
-Not yet done: the 50-run corpus build itself, which waits on the build role in
-step 4 rather than being run under admin credentials.
+**The build role exists** with read on `raw/*` and `datasets/*`, write on
+`datasets/*`, and no `ListBucket` at all — a build is told which runs it is
+assembling, so it never enumerates. `terraform plan` against the live state
+showed 2 to add, 0 to change, 0 to destroy.
+
+One thing the plan asserted without checking: that real builds would run on
+Batch. They cannot, as deployed. The image's `ENTRYPOINT` is fixed to
+`dronesynth convert --config configs/convert.s3.yaml`, and Batch's
+`containerProperties` has no `entryPoint` field to override — only `command`,
+which appends. Running a build on Batch therefore needs the entrypoint reduced
+to `dronesynth` with the subcommand moved into each job definition, plus a
+matching change to the Lambda's command override: a breaking change to the
+deployed conversion path, on a deploy where image and job definition must move
+together.
+
+That is deferred to ship alongside removing the per-run YOLO export, which is
+the other breaking change to the same path — one risky deploy rather than two.
+It costs little in the meantime, because `copy_from` removed the reason Batch
+looked necessary: with server-side copy the build transfers no image bytes, so
+a local build is a few thousand API calls rather than 9 GB of traffic. The role
+already trusts `ecs-tasks` so that when the Batch path does land, it needs no
+IAM change and gets grants identical to the local one — which was the point of
+having a distinct role.
+
+Not yet done: the 50-run corpus build itself.
