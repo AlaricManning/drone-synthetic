@@ -449,3 +449,25 @@ thread: the export was the only reason a single-run conversion ever had to
 declare a train/val split, and with it gone the knob would have been a lie. A
 stale `split:` section in an unedited config is ignored rather than rejected, so
 nothing breaks on the way through.
+
+## Clearing the exports the old path left behind
+
+Code stopping writing something does not remove what it already wrote. The 69
+`auto-` versions still held their exports: 121 objects each, 8349 in total at
+7.6 GB. They are gone now, deleted with an explicit `--include 'auto-*/yolo/*'`
+after a dry run confirmed all 8349 lines matched that shape and none mentioned
+`annotations`, `raw/` or any `v00*` version. `datasets/` went from 15074 objects
+to 6725; the 121 annotation objects and v002's 6001 are untouched.
+
+Three facts made this safe, each checked rather than assumed. The 60 images per
+export were byte-identical to the run's own `raw/.../normal/` frames, same ETag
+and same length, so `raw/` remained the only copy that ever mattered. The labels
+are a pure function of the annotations sitting beside them. And each export's
+`dataset.yaml` pointed `val` at an `images/val` holding nothing, which is the
+misleading claim this plan set out to delete — a per-run export was never a
+dataset, and now nothing implies it was.
+
+What survives per run is the pair a build actually reads: the annotations and
+the provenance sidecar. Bucket versioning is on, so these deletes are delete
+markers and the bytes are recoverable; reclaiming the space for real needs a
+lifecycle rule on noncurrent versions, which does not exist yet.
