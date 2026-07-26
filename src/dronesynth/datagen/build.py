@@ -55,7 +55,8 @@ SCHEMA_VERSION = 1
 # server-side and a label file is a few hundred of them -- so its duration is
 # almost entirely request latency, and this is the one number that decides it:
 # the 50-run corpus took 23 minutes placing frames one at a time. Sixteen stays
-# well inside S3's per-prefix request budget rather than trying to saturate it.
+# well inside S3's per-prefix request budget, and must stay at or below
+# storage.CONNECTION_POOL_SIZE or the client reopens a connection per request.
 PLACEMENT_WORKERS = 16
 
 # What the Lambda names each per-run conversion. The build reads its inputs from

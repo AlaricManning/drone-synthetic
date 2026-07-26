@@ -345,9 +345,10 @@ tracked in git, because which runs a dataset trains on is the decision most
 worth being able to look up later.
 
 `v002` is the current dataset: 50 runs, 3000 frames, 2400 train and 600 val on a
-40/10 run split, labels at threshold 32. Expect a build of that size to take
-around 20 minutes — it transfers no image bytes, so the time is almost entirely
-the per-request round trips.
+40/10 run split, labels at threshold 32. Frames are placed concurrently, since a
+build transfers no image bytes and its duration is almost entirely per-request
+round trips; how long one takes therefore depends more on the link to S3 than on
+the corpus size. See `docs/plans/dataset-build.md` for measured numbers.
 
 ## Infrastructure
 

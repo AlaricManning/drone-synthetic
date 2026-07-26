@@ -152,12 +152,23 @@ class LocalStorage(Storage):
         return str(self._path(key)) if key else str(self.root)
 
 
+# botocore pools ten connections by default. A caller running more threads than
+# that against one client does not queue for a slot -- urllib3 opens an extra
+# connection and then discards it on release because the pool is full, paying a
+# TLS handshake per request. Sizing the pool above any concurrency in this
+# codebase makes connection reuse the normal case rather than the lucky one.
+CONNECTION_POOL_SIZE = 32
+
+
 class S3Storage(Storage):
     def __init__(self, bucket: str, prefix: str = "", client=None) -> None:
         if client is None:
             import boto3
+            from botocore.config import Config
 
-            client = boto3.client("s3")
+            client = boto3.client(
+                "s3", config=Config(max_pool_connections=CONNECTION_POOL_SIZE)
+            )
         self.bucket = bucket
         self.prefix = prefix.strip("/")
         self.client = client

@@ -383,3 +383,34 @@ out one at a time, and at S3 latency that is the whole cost — negligible CPU,
 no bytes transferred. Batching them would cut it to minutes, which matters once
 a corpus is thousands of runs rather than fifty, and is a better first
 optimisation than moving the build to Batch.
+
+## Placing frames concurrently
+
+Every key a build writes is derived from a run id and frame index, so the work
+is decided before anything is written and no placement depends on or collides
+with another. A bounded thread pool is therefore the whole change, and the
+ordering that matters is untouched: frames still land before the descriptor and
+the manifest, so a version without a manifest is still debris.
+
+Measured on a 180-frame build against real S3, instrumented to record when each
+placement starts and ends: peak concurrency 16 of 16 workers, 15.3x effective
+parallelism, 3.95 seconds of wall time against 60.7 seconds of summed in-call
+time. The mechanism does what it claims.
+
+End-to-end timings on this host are bimodal, and honestly so. Three consecutive
+identical builds took 6.1s, 63.1s and 66.8s — 34, 350 and 371 ms per frame
+against the 466 ms of the sequential corpus build. The fast mode is the 14x the
+instrumentation predicts; the slow mode is close to no gain at all, and its
+duration matches the summed in-call time almost exactly, which is what no
+overlap looks like. Nothing in the code differs between runs, botocore reports
+zero retries and no non-200 responses, and a bare thread pool issuing the same
+copies shows the same split, so the cause is below this codebase — most likely
+outbound connection setup on a WSL2 host reaching us-east-1 over home
+broadband. Left as an observation rather than chased, because even the slow mode
+is no worse than sequential and the fix would be somewhere else entirely.
+
+One real defect did surface. botocore pools ten connections by default, and a
+caller running sixteen threads against one client does not queue for a slot: it
+opens an extra connection and discards it on release, paying a TLS handshake per
+request. The pool is now sized above any concurrency here, with a test pinning
+that relationship rather than a comment asking future readers to respect it.
