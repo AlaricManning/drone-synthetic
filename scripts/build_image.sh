@@ -21,7 +21,20 @@ cd "$(dirname "$0")/.."
 tag=${1:-dronesynth-convert:latest}
 
 commit=$(git rev-parse --short=10 HEAD 2>/dev/null || echo unknown)
-if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+
+# Only what the Dockerfile copies can differ between this commit and the image,
+# so those are the paths the dirty flag is about. An edited README does not make
+# the running converter disagree with its stamp; an edited src/ does.
+IMAGE_PATHS=(src configs pyproject.toml docker)
+
+# Deliberately not `git status --porcelain`. On a Windows checkout the worktree
+# holds CRLF while the index holds LF, so run from WSL that reports every file
+# in the repo as modified and the flag would be stuck at true -- which is worse
+# than useless, since it would discredit stamps that are in fact exact.
+if ! git diff --quiet --ignore-cr-at-eol HEAD -- "${IMAGE_PATHS[@]}" 2>/dev/null; then
+  dirty=true
+elif [[ -n "$(git ls-files --others --exclude-standard -- "${IMAGE_PATHS[@]}" 2>/dev/null)" ]]; then
+  # Untracked files under those paths get copied in too.
   dirty=true
 else
   dirty=false
