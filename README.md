@@ -468,10 +468,12 @@ it up like any other:
 ```ini
 # ~/.aws/config
 [profile drone-synth-build]
-role_arn = arn:aws:iam::935961368629:role/dronesynth-build
+role_arn = arn:aws:iam::<account-id>:role/dronesynth-build
 source_profile = default
 region = us-east-1
 ```
+
+`terraform output build_role_arn` prints the ARN to paste in.
 
 `region` is not optional here: it is resolved per profile and is not inherited
 from `source_profile`, so without it boto3 has no region and the build fails

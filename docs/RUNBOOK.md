@@ -182,11 +182,19 @@ the repo file does nothing to cloud jobs until the image is rebuilt and
 pushed:
 
 ```bash
+ECR=$(aws ecr describe-repositories --repository-names dronesynth-convert \
+  --query 'repositories[0].repositoryUri' --output text)
+
 scripts/build_image.sh
-docker tag dronesynth-convert:latest 935961368629.dkr.ecr.us-east-1.amazonaws.com/dronesynth-convert:latest
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 935961368629.dkr.ecr.us-east-1.amazonaws.com
-docker push 935961368629.dkr.ecr.us-east-1.amazonaws.com/dronesynth-convert:latest
+docker tag dronesynth-convert:latest "$ECR:latest"
+aws ecr get-login-password --region us-east-1 \
+  | docker login --username AWS --password-stdin "${ECR%%/*}"
+docker push "$ECR:latest"
 ```
+
+The registry is looked up rather than written down, so the same block works for
+any account and nothing here has to be updated when one changes. `terraform
+output ecr_repository_url` prints the same string.
 
 Use `scripts/build_image.sh` rather than `docker build` directly: it stamps the
 current commit into the image, which every dataset the image converts then
