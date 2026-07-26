@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -49,6 +50,14 @@ from dronesynth.storage import (
 
 DATASET_MANIFEST_FILENAME = "manifest.json"
 SCHEMA_VERSION = 1
+
+# How many frames to place at once. A build moves no image bytes -- copies are
+# server-side and a label file is a few hundred of them -- so its duration is
+# almost entirely request latency, and this is the one number that decides it:
+# the 50-run corpus took 23 minutes placing frames one at a time. Sixteen stays
+# well inside S3's per-prefix request budget, and must stay at or below
+# storage.CONNECTION_POOL_SIZE or the client reopens a connection per request.
+PLACEMENT_WORKERS = 16
 
 # What the Lambda names each per-run conversion. The build reads its inputs from
 # there rather than being told, so a build config cannot name a run and then
@@ -269,6 +278,48 @@ def _require_no_scene_leak(inputs: list[RunInput], assignments: dict[str, str]) 
     )
 
 
+@dataclass(frozen=True)
+class _Placement:
+    """One frame's contribution to a dataset: a copied image and its label."""
+
+    source_image: str
+    image_key: str
+    label_key: str
+    label_text: str
+
+
+def _place_one(placement: _Placement, raw: Storage, datasets: Storage) -> None:
+    datasets.copy_from(raw, placement.source_image, placement.image_key)
+    datasets.write_text(placement.label_key, placement.label_text)
+
+
+def _place_all(placements: list[_Placement], raw: Storage, datasets: Storage) -> None:
+    """Place every frame, several requests in flight at once.
+
+    Threads suit this because each placement is pure I/O wait, and a botocore
+    client is safe to share across them once constructed. Order does not matter:
+    every key is derived from a run id and frame index, so placements neither
+    depend on nor collide with each other.
+
+    The first failure cancels whatever has not started, so a build that cannot
+    finish stops near the request that broke rather than after thousands more.
+    Frames still all land before the descriptor and the manifest, which is what
+    makes a version without a manifest recognisable as debris.
+    """
+    if not placements:
+        return
+
+    workers = min(PLACEMENT_WORKERS, len(placements))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_place_one, placement, raw, datasets) for placement in placements]
+        for future in as_completed(futures):
+            error = future.exception()
+            if error is not None:
+                for pending in futures:
+                    pending.cancel()
+                raise error
+
+
 def _run_record(run: RunInput, subset: str) -> dict[str, Any]:
     return {
         "run_id": run.run_id,
@@ -328,22 +379,27 @@ def build_dataset(version: str, config: BuildConfig) -> BuildResult:
 
     ordered = sorted(inputs, key=lambda r: r.run_id)
     counts = {"train": 0, "val": 0}
+    placements = []
     for run in ordered:
         subset = assignments[run.run_id]
         for annotation in run.annotations:
             stem = f"{run.run_id}_{annotation.frame_index:06d}"
             suffix = PurePosixPath(annotation.normal).suffix
-            datasets.copy_from(
-                raw,
-                f"{run.run_id}/normal/{annotation.normal}",
-                f"{version}/yolo/images/{subset}/{stem}{suffix}",
-            )
             lines = yolo_label_lines(annotation)
-            datasets.write_text(
-                f"{version}/yolo/labels/{subset}/{stem}.txt",
-                "\n".join(lines) + "\n" if lines else "",
+            placements.append(
+                _Placement(
+                    source_image=f"{run.run_id}/normal/{annotation.normal}",
+                    image_key=f"{version}/yolo/images/{subset}/{stem}{suffix}",
+                    label_key=f"{version}/yolo/labels/{subset}/{stem}.txt",
+                    label_text="\n".join(lines) + "\n" if lines else "",
+                )
             )
             counts[subset] += 1
+
+    # Every key is decided before anything is written, so what a build produces
+    # is a function of its inputs alone and placing them concurrently cannot
+    # change it.
+    _place_all(placements, raw, datasets)
 
     datasets.write_text(f"{version}/yolo/dataset.yaml", dataset_yaml_text(class_map))
 

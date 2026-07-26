@@ -11,6 +11,7 @@ from dronesynth.storage import (
     StorageNotPermitted,
     storage_for,
 )
+from dronesynth.storage.backends import CONNECTION_POOL_SIZE
 
 
 @pytest.fixture(params=["local", "s3"])
@@ -149,6 +150,22 @@ def test_storage_for_s3():
     assert storage.describe("run_0001/manifest.json") == (
         "s3://my-bucket/raw/run_0001/manifest.json"
     )
+
+
+def test_the_connection_pool_holds_every_concurrent_caller():
+    """A pool smaller than the caller's thread count costs a handshake per request.
+
+    botocore does not queue for a free connection: it opens an extra one and
+    discards it on release, so an undersized pool turns concurrency into a
+    stream of TLS setups. The build is the concurrent caller today.
+    """
+    from dronesynth.datagen.build import PLACEMENT_WORKERS
+
+    assert PLACEMENT_WORKERS <= CONNECTION_POOL_SIZE
+
+    with mock_aws():
+        storage = S3Storage(bucket="pool-check")
+        assert storage.client.meta.config.max_pool_connections == CONNECTION_POOL_SIZE
 
 
 def test_storage_for_s3_without_bucket_rejected():
