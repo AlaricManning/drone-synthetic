@@ -177,8 +177,10 @@ IAM identities.
   COCO and ImageNet, the producer defines the split: whole runs are held
   out via `split.val_runs` in the config, and frame-level splitting is
   rejected outright. (`split.val_runs` is still empty, so every run converted
-  so far lands in train; the first corpus is large enough to hold runs out
-  now, and choosing which is a pending decision.)
+  so far lands in train. Setting it is not currently possible — conversion is
+  per-run and rejects a val list naming runs outside the run being converted —
+  and no step assembles runs into a dataset that could carry a split. See
+  [docs/plans/dataset-build.md](docs/plans/dataset-build.md).)
 - **QC is the proof of quality.** Nothing downstream trains on this data
   within the pipeline, so the QC report (boxes per frame, box size
   distribution, mask fill ratio, empty-frame counts, and flagged outliers —
