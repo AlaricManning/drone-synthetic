@@ -51,19 +51,76 @@ resource "aws_batch_job_queue" "convert" {
   }
 }
 
+# One image, two job definitions. The image's entrypoint is the bare CLI, so the
+# subcommand and its config live here, per job, rather than being baked in.
+#
+# Submitters fill in Ref:: placeholders through submit_job's `parameters` instead
+# of overriding `command`. That is deliberate: a command override *replaces* the
+# command outright, so anything the job definition put there — the subcommand,
+# the config path — would vanish the moment a submitter passed a run id.
+# Parameters keep a submission to what only it knows, which is what makes the
+# job definition the single place the image and its arguments are decided.
+
 resource "aws_batch_job_definition" "convert" {
   name                  = "dronesynth-convert"
   type                  = "container"
   platform_capabilities = ["FARGATE"]
 
+  parameters = {
+    run_id  = "unset"
+    version = "unset"
+  }
+
   container_properties = jsonencode({
     image = "${aws_ecr_repository.convert.repository_url}:latest"
+    command = [
+      "convert",
+      "--config", "configs/convert.s3.yaml",
+      "--run-id", "Ref::run_id",
+      "--version", "Ref::version",
+    ]
     resourceRequirements = [
       { type = "VCPU", value = "1" },
       { type = "MEMORY", value = "2048" },
     ]
     executionRoleArn = aws_iam_role.batch_execution.arn
     jobRoleArn       = aws_iam_role.convert_job.arn
+    networkConfiguration = {
+      assignPublicIp = "ENABLED"
+    }
+  })
+}
+
+# Builds assemble a dataset version from already-converted runs. Separate from
+# conversion because it is a different job with different credentials: the build
+# role reads raw and datasets and writes only datasets, and never lists either.
+#
+# The config is a parameter rather than fixed because there is one build config
+# per dataset version, all of them baked into the image; which version this job
+# is assembling is precisely the thing the submitter knows.
+resource "aws_batch_job_definition" "build" {
+  name                  = "dronesynth-build"
+  type                  = "container"
+  platform_capabilities = ["FARGATE"]
+
+  parameters = {
+    config  = "unset"
+    version = "unset"
+  }
+
+  container_properties = jsonencode({
+    image = "${aws_ecr_repository.convert.repository_url}:latest"
+    command = [
+      "build",
+      "--config", "Ref::config",
+      "--version", "Ref::version",
+    ]
+    resourceRequirements = [
+      { type = "VCPU", value = "1" },
+      { type = "MEMORY", value = "2048" },
+    ]
+    executionRoleArn = aws_iam_role.batch_execution.arn
+    jobRoleArn       = aws_iam_role.build.arn
     networkConfiguration = {
       assignPublicIp = "ENABLED"
     }

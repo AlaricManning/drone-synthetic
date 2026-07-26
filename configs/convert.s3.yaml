@@ -11,9 +11,8 @@ mask:
   threshold: 32
   min_box_area: 16
 
-split:
-  mode: by_run
-  val_runs: []
+# No split: splits belong to dataset versions, not to conversions. See
+# configs/convert.yaml.
 
 storage:
   raw_root: s3://drone-synthetic-am/raw

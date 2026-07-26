@@ -109,8 +109,9 @@ until a human has looked.
 ### 7. Assemble a trainable dataset
 
 Everything so far is per-run: each conversion wrote its own `auto-<run_id>`
-version holding one run's frames. Those are staging, not a training set.
-Assembling one is a separate, explicit step.
+version holding that run's annotations and provenance — no frames and no labels,
+because labels are derived per dataset and frames already live under `raw/`.
+Assembling something trainable is a separate, explicit step.
 
 Write a build config naming exactly which runs go in and which are held out —
 one per dataset version, committed, since that is the record of intent —
@@ -124,7 +125,20 @@ AWS_PROFILE=drone-synth-build \
 The profile assumes the build role (see the README's infrastructure section);
 admin also works but attributes nothing useful in CloudTrail. Frames are copied
 server-side, so nothing large moves through this machine, but it is still a few
-thousand requests — expect minutes, not seconds.
+thousand requests, placed concurrently. How long that takes depends far more on
+the link to S3 than on the corpus: the 50-run corpus has taken anywhere from
+under a minute to twenty.
+
+A build can also run on Batch, which takes the home link out of it entirely:
+
+```bash
+aws batch submit-job --job-name build-v002 \
+  --job-queue dronesynth-convert --job-definition dronesynth-build \
+  --parameters config=configs/build.v002.s3.yaml,version=v002
+```
+
+The build config must be one baked into the image, so a new dataset version
+needs its config committed and the image pushed before submitting.
 
 The build refuses rather than guesses, and each refusal means something
 specific:
@@ -161,7 +175,7 @@ dataset the ability to explain itself.
 
 ---
 
-## Changing conversion settings (threshold, split, class map)
+## Changing conversion settings (threshold, class map)
 
 `configs/convert.s3.yaml` is **baked into the container image** — editing
 the repo file does nothing to cloud jobs until the image is rebuilt and
@@ -190,8 +204,10 @@ content should always write a **new dataset version**. Keep
 `convert.yaml` (local) and `convert.s3.yaml` in lockstep on every knob
 except storage roots.
 
-To hold out runs for validation, list them under `split.val_runs` in the
-config (both files), rebuild/push, and convert into a new version.
+Holding out runs for validation is **not** a conversion setting — a conversion
+sees one run and has no split to make. List the held-out runs under
+`split.val_runs` in a *build* config and build a new dataset version; no image
+rebuild is involved, since the runs are already converted.
 
 ---
 

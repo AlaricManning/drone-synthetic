@@ -263,6 +263,8 @@ per-run export has no consumer and can go — and it should go in the same deplo
 as the `ENTRYPOINT` change the Batch build path needs, since both break the same
 deployed contract.
 
+*Both are now done; see "The deploy the plan mispredicted" below.*
+
 **A separate val list in the conversion config.** `split` moves to the build
 config, since the split belongs to a dataset version. Relocating it costs
 nothing precisely because it has never been usable.
@@ -414,3 +416,36 @@ caller running sixteen threads against one client does not queue for a slot: it
 opens an extra connection and discards it on release, paying a TLS handshake per
 request. The pool is now sized above any concurrency here, with a test pinning
 that relationship rather than a comment asking future readers to respect it.
+
+## The deploy the plan mispredicted
+
+The plan said a Batch build needs "the entrypoint reduced to `dronesynth` with
+the subcommand moved into each job definition, plus a matching change to the
+Lambda's command override". The first half is right and the second half does not
+work: a `containerOverrides.command` *replaces* the command outright, so
+whatever the job definition puts there — the subcommand, the config path —
+vanishes the moment a submitter passes a run id. Moving the subcommand into the
+job definition and continuing to override the command would have deployed an
+image that runs `dronesynth --run-id ... --version ...` and exits on an
+unrecognised argument.
+
+Batch parameters are the mechanism that actually fits. The job definition holds
+the whole command with `Ref::run_id` placeholders, and a submitter fills those
+in through `parameters` rather than replacing anything. That also preserves what
+the original design was reaching for — "all a submission contributes is which
+run and which dataset version" — instead of forcing every submitter to restate
+the subcommand and config path, which is three places to keep in step and the
+same mistake in a new shape.
+
+So there are now two job definitions over one image: `dronesynth-convert`
+running `convert` under the conversion role, and `dronesynth-build` running
+`build` under the build role. The build config is a parameter because there is
+one per dataset version and which one this job is assembling is exactly what the
+submitter knows.
+
+Dropping the per-run YOLO export shipped in the same change, as intended. It
+also removed `split` from the conversion config, which is the honest end of that
+thread: the export was the only reason a single-run conversion ever had to
+declare a train/val split, and with it gone the knob would have been a lie. A
+stale `split:` section in an unedited config is ignored rather than rejected, so
+nothing breaks on the way through.
