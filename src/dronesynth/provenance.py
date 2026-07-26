@@ -103,15 +103,36 @@ def _from_env() -> dict[str, Any] | None:
     }
 
 
+# What the package installs, so what a difference from HEAD could actually
+# change about a conversion. An edited README cannot.
+CODE_PATHS = ["src", "pyproject.toml"]
+
+
+def _is_dirty(repo_root: Path) -> bool | None:
+    """Whether the installed code differs from HEAD.
+
+    Deliberately not `git status --porcelain`, which on a Windows checkout read
+    from WSL calls every file modified: the worktree holds CRLF and the index
+    holds LF. That would peg the flag at true and discredit stamps that are in
+    fact exact, so compare ignoring the carriage return.
+    """
+    if _git(["rev-parse", "--is-inside-work-tree"], repo_root) != "true":
+        return None
+    modified = _git(["diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--", *CODE_PATHS], repo_root)
+    if modified is None:  # non-zero exit: something under CODE_PATHS differs
+        return True
+    untracked = _git(["ls-files", "--others", "--exclude-standard", "--", *CODE_PATHS], repo_root)
+    return bool(untracked)
+
+
 def _from_git(repo_root: Path) -> dict[str, Any]:
     commit = _git(["rev-parse", f"--short={COMMIT_LENGTH}", "HEAD"], repo_root)
-    status = _git(["status", "--porcelain"], repo_root)
     return {
         "repo": REPO_NAME,
         "commit": commit,
         # Uncommitted changes mean the commit names roughly what ran, not
         # exactly. Worth knowing before labels are used to argue anything.
-        "dirty": None if status is None else bool(status),
+        "dirty": None if commit is None else _is_dirty(repo_root),
     }
 
 
