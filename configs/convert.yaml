@@ -6,9 +6,24 @@ class_map:
   0: drone
 
 mask:
-  # a pixel belongs to the drone if any channel exceeds this value
-  threshold: 12
-  # boxes smaller than this many pixels are dropped as mask noise
+  # A pixel belongs to the drone if any channel exceeds this value.
+  #
+  # Not just a noise floor: the mask pass paints the drone with a flat bright
+  # material, and at close range that material bounces light onto the terrain,
+  # so ground hundreds of pixels away reads 13-31 instead of 0. Anything under
+  # 32 lets that indirect light into the silhouette, which used to be harmless
+  # only because each speck was too small to survive min_box_area. Now that a
+  # frame's pixels are grouped into one object it would stretch the box across
+  # the lit ground instead, so the threshold is what keeps it out.
+  #
+  # 32 measured best on run_20260726_013904_502: it drops the bounce entirely
+  # (the worst frame goes from 28 islands to 3, fill ratio from 0.08 to 0.36)
+  # while changing box width by at most 2 px, and going higher starts chipping
+  # the airframe apart instead. The renderer should stop bouncing mask light in
+  # the first place -- see docs/plans/instance-boxes.md.
+  threshold: 32
+  # Boxes smaller than this many pixels are dropped as mask noise. Applies to
+  # the assembled object, not to its pieces.
   min_box_area: 16
 
 split:

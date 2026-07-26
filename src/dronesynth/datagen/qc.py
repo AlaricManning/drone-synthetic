@@ -50,6 +50,15 @@ def _frame_flags(annotation: FrameAnnotation) -> list[QcFlag]:
     if len(annotation.boxes) > 1:
         flags.append(QcFlag(annotation.frame_index, f"{len(annotation.boxes)} boxes in frame"))
     for box in annotation.boxes:
+        # Fragmentation no longer splits the label -- the box spans the whole
+        # object either way -- but it still says the render dropped structure
+        # or something occluded the airframe, which is worth a look before a
+        # batch is trusted. This is the flag that surfaced propeller blades
+        # detaching at oblique headings.
+        if box.components > 1:
+            flags.append(
+                QcFlag(annotation.frame_index, f"mask in {box.components} pieces")
+            )
         if box.fill_ratio < LOW_FILL_RATIO:
             flags.append(QcFlag(annotation.frame_index, f"low fill ratio {box.fill_ratio}"))
         if box.w * box.h < TINY_BOX_AREA:

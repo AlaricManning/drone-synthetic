@@ -31,7 +31,9 @@ def write_config(tmp_path, text):
 def test_loads_repo_config():
     config = load_convert_config(REPO_CONFIG)
     assert config.class_map == {0: "drone"}
-    assert config.mask.threshold == 12
+    # High enough to reject the light the mask material bounces onto terrain,
+    # which reads 13-31 and would otherwise be grouped into the drone's box.
+    assert config.mask.threshold == 32
     assert config.split.mode == "by_run"
 
 

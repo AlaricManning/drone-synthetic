@@ -6,7 +6,9 @@ class_map:
   0: drone
 
 mask:
-  threshold: 12
+  # See convert.yaml for why 32 and not lower: below it the mask pass's bounced
+  # light off nearby terrain reads as drone.
+  threshold: 32
   min_box_area: 16
 
 split:
