@@ -39,6 +39,23 @@ def yolo_label_lines(annotation: FrameAnnotation) -> list[str]:
     return lines
 
 
+def dataset_yaml_text(class_map: dict[int, str]) -> str:
+    """The ultralytics dataset descriptor, as text.
+
+    Separate from export_yolo so a caller writing through the storage layer
+    rather than to a local tree emits a byte-identical descriptor.
+    """
+    return yaml.safe_dump(
+        {
+            "path": ".",
+            "train": "images/train",
+            "val": "images/val",
+            "names": {int(key): name for key, name in sorted(class_map.items())},
+        },
+        sort_keys=False,
+    )
+
+
 def export_yolo(
     items: list[ExportItem],
     dest: Path,
@@ -63,15 +80,5 @@ def export_yolo(
         label_path.write_text("\n".join(lines) + "\n" if lines else "")
 
     dataset_yaml = dest / "dataset.yaml"
-    dataset_yaml.write_text(
-        yaml.safe_dump(
-            {
-                "path": ".",
-                "train": "images/train",
-                "val": "images/val",
-                "names": {int(key): name for key, name in sorted(class_map.items())},
-            },
-            sort_keys=False,
-        )
-    )
+    dataset_yaml.write_text(dataset_yaml_text(class_map))
     return dataset_yaml

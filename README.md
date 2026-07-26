@@ -182,13 +182,22 @@ IAM identities.
   images, so a random frame-level split leaks train data into val and
   inflates metrics — and a consumer handed loose frames can't know that,
   since the sequence structure isn't visible in a folder of PNGs. As with
-  COCO and ImageNet, the producer defines the split: whole runs are held
-  out via `split.val_runs` in the config, and frame-level splitting is
-  rejected outright. (`split.val_runs` is still empty, so every run converted
-  so far lands in train. Setting it is not currently possible — conversion is
-  per-run and rejects a val list naming runs outside the run being converted —
-  and no step assembles runs into a dataset that could carry a split. See
-  [docs/plans/dataset-build.md](docs/plans/dataset-build.md).)
+  COCO and ImageNet, the producer defines the split: whole runs are held out
+  via `split.val_runs` in the **build** config, and frame-level splitting is
+  rejected outright.
+- **A split belongs to an assembled dataset, not to a conversion.** Converting
+  one run answers "what is in these frames"; it has no split to make, because
+  which runs a dataset contains is not decided yet. So `dronesynth build` takes
+  an explicit set of runs, applies the split across them, and writes one
+  dataset — see [docs/plans/dataset-build.md](docs/plans/dataset-build.md) for
+  why this was not expressible before.
+- **Run ids identify a render, not a scene.** They are timestamps, so two
+  renders of the same seed get different ids; when two render batches collided,
+  25 seeds rendered twice and produced pairs with identical trajectories. A
+  run-level split would put one of each pair in train and its twin in val and
+  report nothing wrong, so a build also refuses when a *scene* — seed together
+  with the randomization, map, drone model and renderer commit that give it
+  meaning — appears on both sides.
 - **QC is the proof of quality.** Nothing downstream trains on this data
   within the pipeline, so the QC report (boxes per frame, box size
   distribution, mask fill ratio, empty-frame counts, and flagged outliers —
@@ -216,15 +225,18 @@ resources are provisioned by Terraform in `infra/`.
 ## Repository layout
 
 ```
-configs/               conversion knobs (threshold, split policy, class map)
-                       + storage roots: convert.yaml (local), convert.s3.yaml
-                       (all-S3, baked into the container image)
+configs/               conversion knobs (threshold, class map) + storage roots:
+                       convert.yaml (local), convert.s3.yaml (all-S3, baked
+                       into the container image); plus one build.<version>.yaml
+                       per dataset version, naming its runs and val hold-out
 src/dronesynth/
   ingest/              run registration, validation, manifest, S3 sync
-  datagen/             pairing, mask→box, canonical JSON, exporters, QC
+  datagen/             pairing, mask→box, canonical JSON, exporters, QC,
+                       and the multi-run dataset build
   storage/             local/S3 abstraction — same code both sides
   batch.py             job submission to AWS Batch
-  cli.py               ingest / convert / submit entrypoints
+  provenance.py        which converter build and config produced some labels
+  cli.py               ingest / convert / build / submit entrypoints
 scripts/               operator tooling: bucket snapshot/prune, job resubmit
                        and wait, corpus verification, README figure generation
 assets/                README figures, generated from a converted run
@@ -297,6 +309,30 @@ aws logs tail /aws/batch/job --since 15m   # the container's conversion summary
 
 The job definition owns the image, roles, and resources; a submission only
 contributes the run id and dataset version.
+
+Conversion is per-run, so a trainable dataset is assembled separately, from a
+config naming exactly which runs go in and which are held out:
+
+```bash
+dronesynth build --config configs/build.v002.s3.yaml --version v002
+```
+
+This reads each run's canonical annotations, copies the frames they label into
+`images/{train,val}/`, derives the label files, and writes the dataset manifest
+last. Nothing is re-thresholded: labels are a pure function of the annotations,
+so a build cannot disagree with the QC report its inputs came from, and changing
+the hold-out recopies frames while recomputing nothing.
+
+Copies are key-to-key within storage, so on S3 the ~9 GB never leaves the
+bucket — pulling it through the machine running the build would take longer than
+the render did.
+
+The build refuses rather than guesses. It will not overwrite an existing
+version, mix runs converted under different mask configs or converter builds,
+accept a run with no converter provenance, or put two renders of one scene on
+opposite sides of the split. There is one build config per dataset version,
+tracked in git, because which runs a dataset trains on is the decision most
+worth being able to look up later.
 
 ## Infrastructure
 
