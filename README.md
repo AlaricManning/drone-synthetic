@@ -14,14 +14,17 @@ mask fill ratio — a quadcopter is mostly air between its arms — and a drop i
 it is one of the signals QC flags for review. The third panel is the
 pipeline's own debug render, not an illustration.
 
-![The same flight at four distances, from a 240x156 box down to 26x15](assets/scale-strip.png)
+![The same flight at four distances, from a 719x294 box down to 17x6](assets/scale-strip.png)
 
-One run also spans an order of magnitude of object scale as the drone flies
-away. That variation is what a detector needs and what is most tedious to
-collect and label by hand.
+A single run also carries the object from 719x294 px down to 17x6 as the drone
+flies away — forty-fold in linear size, two thousand-fold in area. That
+variation is what a detector needs and what is most tedious to collect and
+label by hand.
 
 Both images are generated from a converted run by
-[scripts/make_demo_assets.py](scripts/make_demo_assets.py).
+[scripts/make_demo_assets.py](scripts/make_demo_assets.py) — currently
+`run_20260726_044311_1120`. The run id is recorded here so it is possible to
+tell whether the figures still reflect what the pipeline produces.
 
 ## Architecture
 
