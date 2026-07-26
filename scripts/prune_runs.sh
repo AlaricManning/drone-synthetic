@@ -11,8 +11,8 @@
 # front and resolve every run against that local snapshot rather than probing
 # each prefix. Deletes go out in batches of 1000, the delete-objects maximum.
 #
-#   prune_runs.sh <run-id-file>          # dry run, prints what would go
-#   prune_runs.sh <run-id-file> --apply  # actually delete
+#   scripts/prune_runs.sh <run-id-file>          # dry run, prints what would go
+#   scripts/prune_runs.sh <run-id-file> --apply  # actually delete
 set -euo pipefail
 
 BUCKET=${BUCKET:-drone-synthetic-am}

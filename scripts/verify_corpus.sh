@@ -4,8 +4,8 @@
 # the key snapshot rather than probing each prefix -- one listing of the whole
 # bucket costs seconds, while a per-prefix call costs about a minute.
 #
-#   snapshot_keys.sh                       # refresh the snapshot first
-#   verify_corpus.sh <run-id-file>
+#   scripts/snapshot_keys.sh                       # refresh the snapshot first
+#   scripts/verify_corpus.sh <run-id-file>
 set -eu
 
 BUCKET=${BUCKET:-drone-synthetic-am}
