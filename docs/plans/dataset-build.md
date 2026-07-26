@@ -1,8 +1,10 @@
 # Plan: assembling a trainable dataset
 
-Status: decided 2026-07-26, not yet implemented. Unlike `instance-boxes.md`
-this is written before the work, so what follows is a design record and the
-reasoning behind it, not a measurement. It should be frozen once built.
+Status: decided 2026-07-26; steps 1–3 implemented the same day, step 4 (the
+build role) outstanding. Unlike `instance-boxes.md` this was written before the
+work, so the body is a design record rather than a measurement; the
+[Validation](#validation) section at the end records what the implementation
+actually showed, including the two places the design was wrong.
 
 Second plan doc; same convention. This one exists because a request that
 sounded like a config edit — hold out some runs for validation — turned out
@@ -270,15 +272,56 @@ ad-hoc scripts. Whether the build should absorb that is open.
 
 ## Validation
 
-Not yet done. When implemented:
+Steps 1–3 are implemented and the design above survived mostly intact. Two parts
+of it did not, both found by building the thing rather than by reasoning about
+it, and both worth recording because the reasoning looked sound.
 
-- `split_runs` gets a real multi-run caller and the existing tests pass
-  unchanged.
-- A build over the 50-run corpus produces 2400 train and 600 val images with
-  matching label counts, and no run id or seed on both sides.
-- Frame counts reconcile against the QC reports the annotations came from:
-  3000 images, 3000 labels, 3000 boxes.
-- Re-running the same build is refused, because the manifest already exists.
-- A build mixing runs converted under different thresholds is refused.
-- The same build against a local root and against S3 produces identical
-  manifests apart from `built_at`.
+**The converter could not ask git what commit it was.** The plan assumed the
+provenance stamp would mirror the renderer's, which shells out to `git`. The
+renderer runs from a checkout; the converter runs from a wheel installed into an
+image containing `src`, `configs` and no `.git` at all. A git-based stamp would
+have recorded "unknown" for every production conversion and worked only in
+development — the exact inverse of the point. The commit is now a build arg baked
+into the image, with git as the development fallback, and `scripts/build_image.sh`
+computes it so the documented path cannot omit it. Confirmed against a built
+image: `.git` absent, stamp resolved from the environment; and with the arg
+unset, `commit: null` rather than a plausible-looking wrong answer.
+
+**The first version of that dirty flag was wrong in a way that mattered.**
+`git status --porcelain`, run from WSL against a Windows checkout, reports every
+file in the repo as modified: the worktree holds CRLF and the index holds LF, so
+all 4875 lines differ. Every locally built image would have claimed its labels
+came from uncommitted code, discrediting stamps that were in fact exact. Fixed
+with `--ignore-cr-at-eol`, scoped to the paths the Dockerfile copies, which is
+also the better question — an edited README cannot make the converter disagree
+with the commit it names.
+
+Otherwise, as predicted:
+
+- `split_runs` has the multi-run caller it was written for; its existing tests
+  pass unchanged, and its rejection of unknown val runs now guards a real
+  hold-out list.
+- The scene-identity check is the hash rather than the cheap seed comparison.
+  The seed form was too strict: the same seed under different randomization is
+  genuinely a different scene, and a test pins that it is allowed to straddle
+  the split while a true twin is refused.
+- Verified against three real corpus runs end to end — real manifests, real
+  annotations, real 1.6 MB PNGs: 120 train and 60 val images with matching label
+  files, copies byte-identical to their sources, 180 boxes reconciling with the
+  manifest totals, no val-run frame in train, and the rebuild refused.
+- The full chain now resolves for a real dataset: renderer commit `11075f335e`,
+  converter commit `432f7111c5`, builder commit, mask threshold 32.
+- 133 unit tests, including local-and-S3 builds producing identical manifests
+  apart from `built_at`, and refusals for mixed thresholds, mixed converter
+  builds, missing provenance, unconverted and pruned runs, frame-count
+  disagreement, duplicate inputs, and a scene spanning the split.
+
+**The corpus was reconverted** to carry provenance, since 69 runs predated the
+sidecar and a dataset that cannot attribute its labels defeats the purpose. All
+50 now report one converter build and one config, and the reconversion changed
+no labels in any run — verified by comparing every annotations file before and
+after, which also confirms the deployed code differed from the new image only by
+the provenance feature.
+
+Not yet done: the 50-run corpus build itself, which waits on the build role in
+step 4 rather than being run under admin credentials.

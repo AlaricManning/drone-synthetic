@@ -92,5 +92,10 @@ def write_annotations(annotations: list[FrameAnnotation], path: Path) -> None:
     path.write_text(json.dumps([a.to_dict() for a in annotations], indent=2))
 
 
+def parse_annotations(text: str) -> list[FrameAnnotation]:
+    """Annotations straight from JSON text, for readers holding no local file."""
+    return [FrameAnnotation.from_dict(d) for d in json.loads(text)]
+
+
 def read_annotations(path: Path) -> list[FrameAnnotation]:
-    return [FrameAnnotation.from_dict(d) for d in json.loads(path.read_text())]
+    return parse_annotations(path.read_text())

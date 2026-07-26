@@ -6,9 +6,23 @@ from datetime import date
 from pathlib import Path
 
 from dronesynth.batch import DEFAULT_JOB_DEFINITION, DEFAULT_QUEUE, submit_conversion
-from dronesynth.config import load_convert_config
-from dronesynth.datagen.convert import convert_run
-from dronesynth.ingest.capture import ingest_capture
+from dronesynth.config import ConfigError, load_build_config, load_convert_config
+from dronesynth.datagen.build import BuildError, build_dataset
+from dronesynth.datagen.convert import ConvertError, convert_run
+from dronesynth.datagen.split import SplitError
+from dronesynth.ingest.capture import IngestError, ingest_capture
+from dronesynth.ingest.manifest import ManifestError
+from dronesynth.storage import StorageError
+
+PIPELINE_REFUSALS = (
+    BuildError,
+    ConfigError,
+    ConvertError,
+    IngestError,
+    ManifestError,
+    SplitError,
+    StorageError,
+)
 
 
 def _ingest(args: argparse.Namespace) -> int:
@@ -67,6 +81,24 @@ def _convert(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build(args: argparse.Namespace) -> int:
+    config = load_build_config(args.config)
+    result = build_dataset(version=args.version, config=config)
+    manifest = result.manifest
+    totals = manifest.totals
+    print(f"built {manifest.version}: {totals['runs']} runs, {totals['frames']} frames, "
+          f"{totals['boxes']} boxes")
+    print(f"  train: {totals['train_runs']} runs, {totals['train_frames']} frames")
+    print(f"  val:   {totals['val_runs']} runs, {totals['val_frames']} frames")
+    conversion = manifest.conversion
+    print(f"  labels from threshold {conversion.get('threshold')}, "
+          f"min_box_area {conversion.get('min_box_area')}")
+    builder = manifest.builder
+    print(f"  builder: {builder.get('commit')}" + (" (dirty)" if builder.get("dirty") else ""))
+    print(f"  dataset: {result.location}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="dronesynth",
@@ -103,6 +135,18 @@ def main() -> int:
     convert.add_argument("--run-id", required=True, help="registered run to convert, e.g. run_0001")
     convert.add_argument("--version", required=True, help="dataset version to write, e.g. v001")
 
+    build = subparsers.add_parser(
+        "build",
+        help="assemble converted runs into one trainable dataset version",
+    )
+    build.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="build config YAML: the input runs, the val hold-out, storage roots",
+    )
+    build.add_argument("--version", required=True, help="dataset version to write, e.g. v002")
+
     submit = subparsers.add_parser(
         "submit",
         help="submit a conversion job to AWS Batch",
@@ -115,14 +159,25 @@ def main() -> int:
     )
 
     args = parser.parse_args()
-    if args.command == "ingest":
-        return _ingest(args)
-    if args.command == "convert":
-        return _convert(args)
-    if args.command == "submit":
-        return _submit(args)
-    print(f"'{args.command}' is not implemented yet", file=sys.stderr)
-    return 2
+    handlers = {
+        "ingest": _ingest,
+        "convert": _convert,
+        "build": _build,
+        "submit": _submit,
+    }
+    handler = handlers.get(args.command)
+    if handler is None:
+        print(f"'{args.command}' is not implemented yet", file=sys.stderr)
+        return 2
+    try:
+        return handler(args)
+    except PIPELINE_REFUSALS as exc:
+        # These are the pipeline declining to do something, not failing at it: a
+        # version that already exists, input runs converted under different
+        # configs, a val run that is not in the build. Refusing is the feature,
+        # so it should read as an error rather than a crash.
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
