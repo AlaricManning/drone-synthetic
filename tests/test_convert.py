@@ -72,6 +72,15 @@ def test_convert_registered_run_end_to_end(tmp_path):
     assert [a["frame_index"] for a in annotations] == [0, 1, 2]
     assert annotations[0]["normal"] == "frame_000000.png"
 
+    provenance = json.loads((dataset / "annotations" / "run_0001.provenance.json").read_text())
+    assert provenance["run_id"] == "run_0001"
+    assert provenance["conversion"] == {
+        "threshold": 12,
+        "min_box_area": 16,
+        "class_map": {"0": "drone"},
+    }
+    assert provenance["converter"]["repo"] == "drone-synthetic"
+
     labels = dataset / "yolo" / "labels" / "train"
     assert (labels / "run_0001_000001.txt").read_text() == ""
     assert (labels / "run_0001_000000.txt").read_text().startswith("0 ")
@@ -120,6 +129,8 @@ def test_convert_all_s3_end_to_end(tmp_path):
             for entry in client.list_objects_v2(Bucket="synth-bucket")["Contents"]
         }
         assert "datasets/v001/annotations/run_0001.json" in keys
+        # The sidecar has to reach the bucket, not just the staging directory.
+        assert "datasets/v001/annotations/run_0001.provenance.json" in keys
         assert "datasets/v001/yolo/dataset.yaml" in keys
         assert "datasets/v001/yolo/images/train/run_0001_000000.png" in keys
         assert "datasets/v001/yolo/labels/train/run_0001_000001.txt" in keys
