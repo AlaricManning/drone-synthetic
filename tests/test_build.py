@@ -7,10 +7,15 @@ import yaml
 from moto import mock_aws
 
 from dronesynth.config import ConfigError, load_build_config
-from dronesynth.datagen.build import BuildError, DatasetManifest, build_dataset
+from dronesynth.datagen.build import (
+    PLACEMENT_WORKERS,
+    BuildError,
+    DatasetManifest,
+    build_dataset,
+)
 from dronesynth.datagen.split import SplitError
 from dronesynth.ingest.manifest import RunManifest
-from dronesynth.storage import LocalStorage, StorageNotPermitted
+from dronesynth.storage import LocalStorage, StorageKeyMissing, StorageNotPermitted
 
 CONVERSION = {"threshold": 32, "min_box_area": 16, "class_map": {"0": "drone"}}
 CONVERTER = {"repo": "drone-synthetic", "commit": "abc1234567", "dirty": False}
@@ -212,6 +217,47 @@ def test_manifest_survives_its_inputs_being_deleted(corpus):
     written = json.loads((corpus / "datasets" / "v002" / "manifest.json").read_text())
     assert written["runs"][0]["seed"] == 100
     assert written["runs"][0]["generator"] == GENERATOR
+
+
+def test_every_frame_lands_when_there_are_more_than_the_pool_has_workers(tmp_path):
+    """Placement is concurrent, so the interesting case is more frames than threads."""
+    frames = PLACEMENT_WORKERS * 3 + 1
+    make_run(tmp_path, "run_big", seed=700, frames=frames)
+    config = build_config(tmp_path, ["run_big"])
+
+    result = build_dataset(version="v002", config=config)
+
+    images = tmp_path / "datasets" / "v002" / "yolo" / "images" / "train"
+    labels = tmp_path / "datasets" / "v002" / "yolo" / "labels" / "train"
+    assert result.manifest.totals["frames"] == frames
+    assert len(list(images.iterdir())) == frames
+    assert len(list(labels.iterdir())) == frames
+    # Each fabricated image names its own index, so a shuffled placement would
+    # show up here as a frame landing under someone else's key.
+    for index in range(frames):
+        stem = f"run_big_{index:06d}"
+        assert (images / f"{stem}.png").read_text() == f"run_big-image-{index}"
+        assert (labels / f"{stem}.txt").read_text().startswith("0 ")
+
+
+def test_a_failed_placement_aborts_the_build_before_the_manifest(corpus, monkeypatch):
+    """A build that cannot finish leaves debris, never a manifest naming it complete."""
+    real_copy = LocalStorage.copy_from
+
+    def fail_on_one(self, source, source_key, dest_key):
+        if source_key.endswith("run_c/normal/frame_000001.png"):
+            raise StorageKeyMissing(f"{source_key} vanished mid-build")
+        return real_copy(self, source, source_key, dest_key)
+
+    monkeypatch.setattr(LocalStorage, "copy_from", fail_on_one)
+    config = build_config(corpus, ["run_a", "run_b", "run_c", "run_d"])
+
+    with pytest.raises(StorageKeyMissing, match="vanished mid-build"):
+        build_dataset(version="v002", config=config)
+
+    version = corpus / "datasets" / "v002"
+    assert not (version / "manifest.json").exists()
+    assert not (version / "yolo" / "dataset.yaml").exists()
 
 
 def test_rebuilding_a_version_is_refused(corpus):
