@@ -44,6 +44,7 @@ def test_handler_submits_auto_versioned_job(monkeypatch):
     assert result == {"jobId": "job-42", "runId": "run_0002", "version": "auto-run_0002"}
     (call,) = stub.calls
     assert call["jobName"] == "convert-run_0002-auto-run_0002"
-    assert call["containerOverrides"]["command"] == [
-        "--run-id", "run_0002", "--version", "auto-run_0002",
-    ]
+    assert call["parameters"] == {"run_id": "run_0002", "version": "auto-run_0002"}
+    # An override would replace the command, dropping the subcommand and config
+    # path the job definition supplies.
+    assert "containerOverrides" not in call

@@ -16,9 +16,6 @@ class_map:
 mask:
   threshold: 12
   min_box_area: 16
-split:
-  mode: by_run
-  val_runs: []
 storage:
   raw_root: {root}/raw
   dataset_root: {root}/datasets
@@ -81,11 +78,13 @@ def test_convert_registered_run_end_to_end(tmp_path):
     }
     assert provenance["converter"]["repo"] == "drone-synthetic"
 
-    labels = dataset / "yolo" / "labels" / "train"
-    assert (labels / "run_0001_000001.txt").read_text() == ""
-    assert (labels / "run_0001_000000.txt").read_text().startswith("0 ")
-    images = dataset / "yolo" / "images" / "train"
-    assert len(list(images.iterdir())) == 3
+    # No per-run YOLO export: labels are derived by a build, from these
+    # annotations, for whichever dataset version the run ends up in.
+    assert not (dataset / "yolo").exists()
+    assert sorted(p.name for p in (dataset / "annotations").iterdir()) == [
+        "run_0001.json",
+        "run_0001.provenance.json",
+    ]
 
     qc = tmp_path / "qc" / "run_0001"
     report = json.loads((qc / "report.json").read_text())
@@ -131,16 +130,20 @@ def test_convert_all_s3_end_to_end(tmp_path):
         assert "datasets/v001/annotations/run_0001.json" in keys
         # The sidecar has to reach the bucket, not just the staging directory.
         assert "datasets/v001/annotations/run_0001.provenance.json" in keys
-        assert "datasets/v001/yolo/dataset.yaml" in keys
-        assert "datasets/v001/yolo/images/train/run_0001_000000.png" in keys
-        assert "datasets/v001/yolo/labels/train/run_0001_000001.txt" in keys
         assert "qc/run_0001/report.json" in keys
         assert "qc/run_0001/debug/run_0001_000000.png" in keys
 
-        label = client.get_object(
-            Bucket="synth-bucket", Key="datasets/v001/yolo/labels/train/run_0001_000000.txt"
-        )["Body"].read().decode()
-        assert label.startswith("0 ")
+        # A conversion writes no frames: it never copies an image anywhere, so
+        # the only images in the bucket are the ones ingest put under raw/.
+        assert not any(key.startswith("datasets/v001/yolo/") for key in keys)
+        assert not any(key.endswith(".png") for key in keys if key.startswith("datasets/"))
+
+        annotations = json.loads(
+            client.get_object(
+                Bucket="synth-bucket", Key="datasets/v001/annotations/run_0001.json"
+            )["Body"].read().decode()
+        )
+        assert [a["frame_index"] for a in annotations] == [0, 1]
 
 
 def test_manifest_frame_count_mismatch_refused(tmp_path):

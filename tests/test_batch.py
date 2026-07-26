@@ -22,9 +22,16 @@ def test_submit_conversion_builds_the_right_job():
     assert call["jobName"] == "convert-run_0001-v001"
     assert call["jobQueue"] == "dronesynth-convert"
     assert call["jobDefinition"] == "dronesynth-convert"
-    assert call["containerOverrides"]["command"] == [
-        "--run-id", "run_0001", "--version", "v001",
-    ]
+    assert call["parameters"] == {"run_id": "run_0001", "version": "v001"}
+
+
+def test_submit_conversion_does_not_override_the_command():
+    """A command override replaces it outright, dropping the subcommand and config
+    the job definition supplies. Parameters fill placeholders instead."""
+    client = StubBatchClient()
+    submit_conversion("run_0001", "v001", client=client)
+
+    assert "containerOverrides" not in client.calls[0]
 
 
 def test_submit_conversion_custom_queue():

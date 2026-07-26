@@ -69,13 +69,18 @@ Windows (UE 5.5 + EasySynth)
                  │  (or automatically: EventBridge fires
                  ▼   when manifest.json lands)
         AWS Batch job (Fargate, CPU) — containerized converter
-            mask threshold → boxes → canonical JSON → YOLO export → QC
+            mask threshold → boxes → canonical JSON → QC
                  │
                  ▼
-        s3://<bucket>/datasets/<version>/   canonical per-frame annotations,
-            ├── annotations/                 a provenance sidecar per run,
-            └── yolo/                        + YOLO images/labels layout
-        s3://<bucket>/qc/<run_id>/          QC report + debug box renders
+        s3://<bucket>/datasets/auto-<run_id>/   canonical per-frame annotations
+            └── annotations/                     + a provenance sidecar
+        s3://<bucket>/qc/<run_id>/              QC report + debug box renders
+                 │
+                 │  dronesynth build --config configs/build.vNNN.s3.yaml
+                 ▼
+        s3://<bucket>/datasets/<version>/   one trainable dataset: frames copied
+            ├── yolo/                        server-side, labels derived from the
+            └── manifest.json                annotations, split held out by run
 ```
 
 ## Where this fits in the larger system
@@ -154,9 +159,11 @@ IAM identities.
   is immutable: re-ingesting an existing id is an error.
 - **Canonical JSON annotations; YOLO is an export.** Mask renders carry
   segmentation information for free. Conversion writes per-frame JSON
-  (boxes, mask area, fill ratio, component count) as the source of truth and
-  generates the YOLO layout from it, so future COCO or segmentation exports
-  are new exporters, not rewrites.
+  (boxes, mask area, fill ratio, component count) as the source of truth, and
+  the YOLO layout is derived from it when a dataset is built, so future COCO or
+  segmentation exports are new exporters, not rewrites. Conversion itself
+  exports nothing: a per-run export could only duplicate every frame under a
+  train/val split that no dataset uses.
 - **One object is one box, whatever the mask does.** Pixels are grouped by
   object, not by connectivity. The mask pass paints only the drone, so which
   object a pixel belongs to is known rather than inferred, and connectivity
@@ -280,16 +287,18 @@ semantics, so an existing run can never be overwritten. Omit `--raw-root`
 (and the profile) to ingest to the local `data/raw` staging area from config
 instead; local runs are what `convert` reads until the Batch job lands.
 
-Then convert a registered run into a versioned dataset:
+Then convert a registered run into canonical annotations:
 
 ```bash
 dronesynth convert --config configs/convert.yaml --run-id run_0001 --version v001
 ```
 
-This writes canonical annotations and the YOLO layout to
-`data/datasets/v001/` and the QC report plus debug renders (frames with the
-detected boxes drawn on) to `data/qc/run_0001/`. Review flagged frames — and
-ideally scrub the debug folder — before treating the dataset as good.
+This writes the annotations and their provenance sidecar to
+`data/datasets/v001/annotations/` and the QC report plus debug renders (frames
+with the detected boxes drawn on) to `data/qc/run_0001/`. Review flagged
+frames — and ideally scrub the debug folder — before treating the run as good.
+Nothing trainable comes out of a conversion; `dronesynth build` below is what
+turns converted runs into a dataset.
 
 To run the conversion as the container does in production — everything in
 and out of S3, using `configs/convert.s3.yaml`:

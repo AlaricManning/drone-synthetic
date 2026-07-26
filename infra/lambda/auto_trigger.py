@@ -39,7 +39,10 @@ def handler(event, context):
         jobName=f"convert-{run_id}-{version}",
         jobQueue=os.environ["JOB_QUEUE"],
         jobDefinition=os.environ["JOB_DEFINITION"],
-        containerOverrides={"command": ["--run-id", run_id, "--version", version]},
+        # Parameters, not a command override: an override replaces the whole
+        # command, which would drop the subcommand and config the job definition
+        # supplies. This passes only what this trigger knows.
+        parameters={"run_id": run_id, "version": version},
     )
     print(f"submitted {response['jobId']}: {run_id} -> {version}")
     return {"jobId": response["jobId"], "runId": run_id, "version": version}

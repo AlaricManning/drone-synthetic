@@ -27,6 +27,15 @@ RUN pip install --no-cache-dir .
 
 USER app
 
-# run-id and dataset version are appended at run time:
-#   docker run ... dronesynth-convert --run-id run_0001 --version v001
-ENTRYPOINT ["dronesynth", "convert", "--config", "configs/convert.s3.yaml"]
+# The entrypoint is the bare CLI, and the subcommand comes from whatever runs it:
+#   docker run ... dronesynth-convert convert --config configs/convert.s3.yaml \
+#       --run-id run_0001 --version v001
+#
+# It used to bake in `convert --config configs/convert.s3.yaml`, which made this
+# image able to do exactly one of the things the CLI can do. Batch cannot help
+# there: a job definition has no entryPoint field to override, only command,
+# which Docker appends to the entrypoint. So a build could never run from this
+# image however the job was defined. Each job definition now names its own
+# subcommand instead — see infra/batch.tf.
+ENTRYPOINT ["dronesynth"]
+CMD ["--help"]

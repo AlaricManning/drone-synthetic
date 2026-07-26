@@ -1,9 +1,14 @@
 """Submit conversion jobs to AWS Batch.
 
-Submission is thin on purpose: the job definition (image, roles, resources)
-lives in Terraform, and the container's entrypoint bakes in the S3 config —
-all a submission contributes is *which run* and *which dataset version*,
-passed as the container command.
+Submission is thin on purpose: the job definition (image, roles, resources,
+subcommand and config) lives in Terraform, and all a submission contributes is
+*which run* and *which dataset version*.
+
+Those two arrive as job parameters filling Ref:: placeholders, rather than as a
+container command override. An override replaces the command outright, so
+passing a run id that way would also erase the subcommand and config path the
+job definition supplies — which is how the image came to have `convert` baked
+into its entrypoint, and why nothing else could run from it.
 """
 
 from __future__ import annotations
@@ -39,8 +44,6 @@ def submit_conversion(
         jobName=job_name,
         jobQueue=queue,
         jobDefinition=job_definition,
-        containerOverrides={
-            "command": ["--run-id", run_id, "--version", dataset_version],
-        },
+        parameters={"run_id": run_id, "version": dataset_version},
     )
     return SubmittedJob(job_id=response["jobId"], job_name=job_name, queue=queue)

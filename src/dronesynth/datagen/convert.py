@@ -1,7 +1,14 @@
-"""Orchestrates one run's conversion: paired renders -> dataset + QC.
+"""Orchestrates one run's conversion: paired renders -> annotations + QC.
 
-The unit of work the Batch job executes. All three storage roots (raw,
-dataset, qc) may independently be local paths or s3:// URIs:
+The unit of work the Batch job executes. A conversion produces the canonical
+annotations for one run, the provenance saying how they were produced, and the
+QC report and debug frames for reviewing them. It writes no YOLO export: labels
+are a pure function of the annotations, so `dronesynth build` derives them for
+whichever dataset version a run ends up in, and a per-run export could only be
+a second copy of every frame under a train/val split no dataset uses.
+
+All three storage roots (raw, dataset, qc) may independently be local paths or
+s3:// URIs:
 
 - the run is *localized* first — downloaded to a working directory when raw
   storage is remote, used in place when it is already a local directory;
@@ -10,11 +17,11 @@ dataset, qc) may independently be local paths or s3:// URIs:
 - outputs are *published* through the storage layer — written in place when
   the destination is local, uploaded when it is S3.
 
-The labels are deterministic: (run frames, config) fully determine every
-annotation, YOLO file and QC number. The provenance sidecar is the deliberate
-exception — it records the converter's commit and the time of conversion, which
-are facts about the build rather than about the frames, and exists so that
-"same config" is a checkable claim instead of an assumed one.
+The output is deterministic: (run frames, config) fully determine every
+annotation and QC number. The provenance sidecar is the deliberate exception —
+it records the converter's commit and the time of conversion, which are facts
+about the build rather than about the frames, and exists so that "same config"
+is a checkable claim instead of an assumed one.
 """
 
 from __future__ import annotations
@@ -28,8 +35,6 @@ from dronesynth.config import ConvertConfig
 from dronesynth.datagen.annotations import annotate_frame, write_annotations
 from dronesynth.datagen.pairing import pair_frames
 from dronesynth.datagen.qc import QcReport, compute_qc, render_debug_frame, write_qc_report
-from dronesynth.datagen.split import split_runs
-from dronesynth.datagen.yolo import ExportItem, export_yolo
 from dronesynth.ingest.manifest import MANIFEST_FILENAME, ManifestError, RunManifest
 from dronesynth.provenance import PROVENANCE_SUFFIX, run_provenance, write_provenance
 from dronesynth.storage import LocalStorage, Storage, StorageKeyMissing, storage_for
@@ -132,13 +137,6 @@ def convert_run(
             ),
             annotations_dir / f"{run_id}{PROVENANCE_SUFFIX}",
         )
-
-        assignments = split_runs([run_id], config.split.val_runs)
-        items = [
-            ExportItem(run_id=run_id, annotation=annotation, image_path=pair.normal)
-            for pair, annotation in zip(pairs, annotations, strict=True)
-        ]
-        export_yolo(items, dataset_dir / "yolo", config.class_map, assignments)
 
         qc_dir = _out_dir(qc_storage, run_id, workdir, "qc")
         report = compute_qc(run_id, annotations)

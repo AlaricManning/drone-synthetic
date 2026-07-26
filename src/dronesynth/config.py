@@ -38,9 +38,17 @@ class StorageConfig:
 
 @dataclass(frozen=True)
 class ConvertConfig:
+    """How one run is converted into canonical annotations and QC.
+
+    No split: a conversion produces annotations, and which side of a train/val
+    boundary they land on is decided per dataset version by a build config. It
+    used to carry one because conversion also wrote a per-run YOLO export, which
+    forced every single-run conversion to declare a split it had no business
+    deciding.
+    """
+
     class_map: dict[int, str]
     mask: MaskConfig
-    split: SplitConfig
     storage: StorageConfig
 
 
@@ -121,8 +129,6 @@ def load_convert_config(path: Path) -> ConvertConfig:
     if not isinstance(min_box_area, int) or min_box_area < 0:
         raise ConfigError(f"mask.min_box_area must be a non-negative integer, got {min_box_area!r}")
 
-    split = _load_split(raw, str(path))
-
     storage_raw = _require(raw, "storage", str(path))
     storage = StorageConfig(
         raw_root=str(_require(storage_raw, "raw_root", "storage")),
@@ -133,7 +139,6 @@ def load_convert_config(path: Path) -> ConvertConfig:
     return ConvertConfig(
         class_map=class_map,
         mask=MaskConfig(threshold=threshold, min_box_area=min_box_area),
-        split=split,
         storage=storage,
     )
 

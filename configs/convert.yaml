@@ -1,6 +1,7 @@
-# Conversion config: raw run -> versioned dataset.
-# Every knob that affects dataset content lives here so a dataset version is
-# fully determined by (input runs, this file).
+# Conversion config: raw run -> canonical annotations + QC.
+# Every knob that affects label content lives here, and each converted run
+# records which of these values produced it in its provenance sidecar, so a
+# build can check that the runs it assembles are comparable.
 
 class_map:
   0: drone
@@ -25,13 +26,9 @@ mask:
   # the assembled object, not to its pieces.
   min_box_area: 16
 
-split:
-  # frames from one camera path are near-duplicates, so splitting is only
-  # ever done at run level — whole runs are held out for val, never frames
-  mode: by_run
-  # runs listed here go to val; everything else trains. With a single run
-  # captured so far, leave empty: everything trains, val is empty.
-  val_runs: []
+# No split here: a conversion writes annotations, and which side of a train/val
+# boundary they fall on is a property of a dataset version, decided in a build
+# config. See configs/build.v002.s3.yaml.
 
 storage:
   # local staging during development; becomes s3://<bucket>/... in production

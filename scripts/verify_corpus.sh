@@ -14,18 +14,23 @@ SNAPSHOT=${SNAPSHOT:-/tmp/s3_keys.txt}
 QC_DIR=${QC_DIR:-/tmp/qc_reports}
 # Frames per clip, which fixes how many objects a complete run owns:
 #   raw      frames rgb + frames mask + manifest.json + job.json
-#   dataset  frames images + frames labels + annotations json + provenance
-#            sidecar + dataset.yaml
+#   dataset  annotations json + provenance sidecar
 #   qc       frames debug renders + report.json
 #
-# Runs converted before the provenance sidecar landed have one object fewer
-# under datasets/, so a mixed set will report mismatches for the older ones.
+# A conversion is two objects under datasets/ regardless of frame count: it
+# writes annotations and provenance and nothing else. Runs converted before the
+# per-run YOLO export was dropped also carry frames*2 + 1 export objects, so a
+# mixed set reports mismatches for the older ones -- expected, and the reason
+# DS_EXTRA exists rather than a second threshold to remember.
 FRAMES=${FRAMES:-60}
+# Set to the export size to check runs converted before the export was dropped:
+#   DS_EXTRA=$((60 * 2 + 1)) verify_corpus.sh runs.txt
+DS_EXTRA=${DS_EXTRA:-0}
 
 run_file=${1:?usage: verify_corpus.sh <run-id-file>}
 
 want_raw=$((FRAMES * 2 + 2))
-want_ds=$((FRAMES * 2 + 3))
+want_ds=$((2 + DS_EXTRA))
 want_qc=$((FRAMES + 1))
 
 echo "=== presence: raw / dataset / qc (want $want_raw/$want_ds/$want_qc) ==="
