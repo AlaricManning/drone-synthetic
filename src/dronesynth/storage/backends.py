@@ -12,6 +12,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from pathlib import Path
 from shutil import copy2, rmtree
+from tempfile import TemporaryDirectory
 
 
 class StorageError(Exception):
@@ -38,6 +39,21 @@ class Storage(ABC):
 
     @abstractmethod
     def get_file(self, key: str, dest: Path) -> None: ...
+
+    @abstractmethod
+    def copy_from(self, source: Storage, source_key: str, dest_key: str) -> None:
+        """Copy one object out of another storage root into this one.
+
+        Assembling a dataset means moving thousands of frames that are already
+        in the bucket. Doing that through put_file/get_file would pull every
+        one down and push it back up; within S3 this is a server-side copy and
+        no bytes leave the bucket at all. Backends that cannot shortcut fall
+        back to a transfer, so the contract holds whatever the pairing.
+
+        Source and destination are separate roots — raw and datasets are
+        different storage instances even when they share a bucket — so this
+        takes the source storage rather than being a key-to-key operation.
+        """
 
     @abstractmethod
     def write_text(self, key: str, text: str) -> None: ...
@@ -93,6 +109,11 @@ class LocalStorage(Storage):
             copy2(self._path(key), dest)
         except FileNotFoundError as exc:
             raise StorageKeyMissing(f"{self.describe(key)} does not exist") from exc
+
+    def copy_from(self, source: Storage, source_key: str, dest_key: str) -> None:
+        # Landing in a local directory is what get_file already does, whatever
+        # the source is; it makes the parent and raises on a missing key.
+        source.get_file(source_key, self._path(dest_key))
 
     def write_text(self, key: str, text: str) -> None:
         path = self._path(key)
@@ -157,6 +178,30 @@ class S3Storage(Storage):
             if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
                 raise StorageKeyMissing(f"{self.describe(key)} does not exist") from exc
             raise
+
+    def copy_from(self, source: Storage, source_key: str, dest_key: str) -> None:
+        from botocore.exceptions import ClientError
+
+        if isinstance(source, S3Storage):
+            try:
+                self.client.copy_object(
+                    Bucket=self.bucket,
+                    Key=self._key(dest_key),
+                    CopySource={"Bucket": source.bucket, "Key": source._key(source_key)},
+                )
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
+                    raise StorageKeyMissing(
+                        f"{source.describe(source_key)} does not exist"
+                    ) from exc
+                raise
+            return
+
+        # Anything else has to come through the machine running this.
+        with TemporaryDirectory(prefix="dronesynth-copy-") as tmp:
+            staged = Path(tmp) / "object"
+            source.get_file(source_key, staged)
+            self.put_file(staged, dest_key)
 
     def write_text(self, key: str, text: str) -> None:
         self.client.put_object(
