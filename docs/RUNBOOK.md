@@ -256,8 +256,12 @@ with admin credentials:
 
 ```bash
 docker run --rm -v ~/.aws:/home/app/.aws:ro -e AWS_PROFILE=default \
-  dronesynth-convert --run-id run_0002 --version v002
+  dronesynth-convert convert --config configs/convert.s3.yaml \
+  --run-id run_0002 --version v002
 ```
+
+The subcommand and `--config` are explicit because the image's entrypoint is the
+bare CLI. Omitting them prints the CLI's help rather than converting anything.
 
 Or fully local (no AWS at all): ingest without `--raw-root`, then
 `dronesynth convert --config configs/convert.yaml --run-id run_0002 --version v002`

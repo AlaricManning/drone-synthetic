@@ -28,60 +28,120 @@ tell whether the figures still reflect what the pipeline produces.
 
 ## Architecture
 
-Everything in the diagram is live: ingest writes runs to S3, and
-`dronesynth submit` converts them on AWS Batch (Fargate) using the image in
-ECR. The same container also runs locally via `docker run` — that is the
-debugging path, not a separate implementation.
-
-Conversion also triggers itself: an EventBridge rule watches for
-`raw/*/manifest.json` landing (the manifest-last protocol makes that the
-run-complete signal) and a small Lambda submits the Batch job, writing
-dataset version `auto-<run_id>`. Manual `dronesynth submit` remains for
-curated multi-run versions and re-runs.
-
-Two things write to `raw/`, and they render by different means. The diagram
-below is the manual path: an EasySynth capture that `dronesynth ingest`
-validates and uploads. The other is
-[drone-synth-render](https://github.com/AlaricManning/drone-synth-render), an
-Unreal orchestrator that drives Movie Render Queue directly, renders
-unattended, and publishes finished runs itself — same layout, same
-manifest-last protocol, but it never calls `dronesynth ingest`, so this
-pipeline first sees those runs when EventBridge fires. Because it builds the
-mask pass rather than taking a plugin's, it can isolate the drone and disable
-temporal AA on that pass alone. Each producer has its own put-only identity;
-see [Security model](#security-model).
+Everything in the diagram is live. Two producers write runs, conversion
+happens on its own when one lands, and one manual command turns converted
+runs into a dataset. The same container Batch runs also runs locally via
+`docker run` — that is the debugging path, not a second implementation.
 
 ```
-Windows (UE 5.5 + EasySynth)
-┌──────────────────────────────────────────┐
-│ render → local disk (scratch)            │  renders are messy and can fail;
-└────────────────┬─────────────────────────┘  local disk absorbs that
-                 │
-                 │  dronesynth ingest   (validates pairing/frame counts, writes
-                 │                       manifest, uploads frames first,
-                 ▼                       manifest LAST)
-        s3://<bucket>/raw/<run_id>/
-            ├── normal/
-            ├── mask/                     a run with a manifest is complete by
-            └── manifest.json             construction; without one, ignore it
-                 │
-                 │  dronesynth submit --run <run_id>
-                 │  (or automatically: EventBridge fires
-                 ▼   when manifest.json lands)
-        AWS Batch job (Fargate, CPU) — containerized converter
-            mask threshold → boxes → canonical JSON → QC
-                 │
-                 ▼
-        s3://<bucket>/datasets/auto-<run_id>/   canonical per-frame annotations
-            └── annotations/                     + a provenance sidecar
-        s3://<bucket>/qc/<run_id>/              QC report + debug box renders
-                 │
-                 │  dronesynth build --config configs/build.vNNN.s3.yaml
-                 ▼
-        s3://<bucket>/datasets/<version>/   one trainable dataset: frames copied
-            ├── yolo/                        server-side, labels derived from the
-            └── manifest.json                annotations, split held out by run
+producers — two of them, and neither calls the other's code
+  · drone-synth-render (UE 5.5 + Movie Render Queue) renders unattended and
+    publishes its own runs; nothing here watches it work
+  · a capture by hand (EasySynth) that `dronesynth ingest` validates and uploads
+        │
+        │  renders are messy and can fail, so both stage to local disk first,
+        │  then upload the frames first and the manifest LAST
+        ▼
+s3://<bucket>/raw/<run_id>/
+    ├── normal/           a run with a manifest is complete by construction;
+    ├── mask/             a run without one is debris from a failed upload
+    └── manifest.json
+        │
+        │  manifest.json landing raises an S3 event. EventBridge matches
+        │  raw/*/manifest.json and invokes dronesynth-auto-trigger, which
+        │  submits one Batch job for that run. Nobody is watching.
+        ▼
+AWS Batch · dronesynth-convert (Fargate, 1 vCPU) — the image from ECR
+    mask threshold → one box per object → canonical JSON → QC
+        │
+        ├─────────────────────────────► qc/<run_id>/
+        │                                  QC report, and debug renders with
+        │                                  the derived boxes drawn on
+        ▼
+datasets/auto-<run_id>/
+    └── annotations/       per-frame JSON, and a sidecar naming the converter
+                           commit and the mask settings behind those labels
+        │
+        │  dronesynth build --config configs/build.vNNN.s3.yaml
+        │  locally under the build role, or as the dronesynth-build job
+        │  on the same queue. The only step a human decides.
+        ▼
+s3://<bucket>/datasets/<version>/         the artifact you train on
+    ├── yolo/images/{train,val}/          frames copied server-side
+    ├── yolo/labels/{train,val}/          labels derived from the annotations
+    ├── yolo/dataset.yaml
+    └── manifest.json                     input runs, split and provenance,
+                                          written last; immutable after
 ```
+
+### In plain terms
+
+A render box finishes a flight and uploads it. Everything after that happens
+by itself, except the last step.
+
+S3 notices the final file arrive and mentions it to EventBridge, which starts a
+small Lambda, which asks Batch to run one container for that flight. The
+container looks at the mask frames — the drone painted white on black — works
+out where the drone is in every frame, and writes that down as JSON alongside a
+QC report with the boxes drawn on, so you can see whether to trust it. A minute
+or two after the upload finishes, that flight is labeled and nobody touched it.
+
+What exists at that point is one flight's labels, not something you can train
+on. No flight knows about any other, so nothing has decided which flights teach
+the model and which are held back to measure it — and that decision is the one
+thing left to a person. You run `dronesynth build`, naming the flights you want
+and which to hold out; it copies their frames into train and val folders,
+writes the label files, and stamps a manifest recording exactly which flights
+and which build of the code produced them. That version is what you train on,
+and it is why you can say later that these weights came from that data.
+
+### The same thing, precisely
+
+S3 event notifications are enabled bucket-wide and delivered to EventBridge.
+The rule `dronesynth-manifest-created` matches `source: aws.s3`, `detail-type:
+Object Created`, and an object key wildcard of `raw/*/manifest.json`, so no
+other key can fire it. That pattern carries the weight: both producers upload
+frames first and the manifest last, which makes the manifest key appearing the
+run-complete signal, and a half-uploaded run therefore triggers nothing.
+
+EventBridge cannot parse a run id out of a key, so the rule invokes
+`dronesynth-auto-trigger` (Python 3.12, 30-second timeout) which does exactly
+that and calls `SubmitJob` on the `dronesynth-convert` queue and job definition,
+passing `run_id` and `version=auto-<run_id>` as job **parameters**. Parameters
+rather than a command override: an override replaces the command outright, which
+would discard the subcommand and config path the job definition supplies.
+
+The job runs the ECR image on Fargate at 1 vCPU and 2 GB as `convert --config
+configs/convert.s3.yaml`, with the run id and version substituted into `Ref::`
+placeholders. Under the conversion job role it reads `raw/<run_id>/`, thresholds
+each mask at 32, groups lit pixels per object into one box per drone, and writes
+`datasets/auto-<run_id>/annotations/<run_id>.json`, a provenance sidecar naming
+the converter commit and the mask settings, and the QC report and debug renders
+to `qc/<run_id>/`. That role can read `raw/*` and write `datasets/*` and `qc/*`,
+and cannot list the bucket.
+
+Conversion is deterministic, which makes the trigger safe to re-fire: a repeat
+event resubmits the job and the job rewrites byte-identical annotations. There
+is no lock and none is needed.
+
+Assembling a dataset is the deliberate step, and `dronesynth build` refuses more
+readily than it guesses — see [Usage](#usage). It reads each run's manifest and
+annotations, copies frames key-to-key with `CopyObject` so no image bytes pass
+through the machine running it, derives labels from the annotations without
+re-thresholding anything, and writes `datasets/<version>/manifest.json` last
+and only if absent. It runs under a separate assumed build role that adds read
+on `datasets/*`, either locally or as the `dronesynth-build` job definition on
+the same queue.
+
+The two producers differ in how they render and in nothing else.
+[drone-synth-render](https://github.com/AlaricManning/drone-synth-render) drives
+Movie Render Queue directly and publishes finished runs itself, so this pipeline
+first sees those runs when EventBridge fires; because it builds the mask pass
+rather than taking a plugin's, it can isolate the drone and disable temporal AA
+on that pass alone. An EasySynth capture takes the `dronesynth ingest` path
+instead, which validates pairing and frame counts before anything uploads. Same
+layout, same manifest-last protocol, and a separate put-only identity each; see
+[Security model](#security-model).
 
 ## Where this fits in the larger system
 
@@ -106,7 +166,7 @@ flowchart TB
 
     subgraph syn["synthetic capture · drone-synthetic-am"]
         R["<b>drone-synth-render</b><br/>UE 5.5 + MRQ · seeded runs"]
-        D["<b>drone-synthetic</b> · this repo<br/>mask → boxes → canonical JSON → YOLO + QC"]
+        D["<b>drone-synthetic</b> · this repo<br/>convert: mask → boxes → canonical JSON + QC<br/>build: runs → one split YOLO dataset"]
         DS["datasets/vN"]
         R -->|"raw/{run_id}/, manifest last"| D --> DS
     end
@@ -244,20 +304,22 @@ resources are provisioned by Terraform in `infra/`.
 ```
 configs/               conversion knobs (threshold, class map) + storage roots:
                        convert.yaml (local), convert.s3.yaml (all-S3, baked
-                       into the container image); plus one build.<version>.yaml
-                       per dataset version, naming its runs and val hold-out
+                       into the container image); plus one build config per
+                       dataset version — build.<version>.s3.yaml, naming the
+                       runs that go in and the val hold-out
 src/dronesynth/
   ingest/              run registration, validation, manifest, S3 sync
-  datagen/             pairing, mask→box, canonical JSON, exporters, QC,
-                       and the multi-run dataset build
+  datagen/             pairing, mask→box, canonical JSON, QC, the YOLO
+                       derivation, and the multi-run dataset build
   storage/             local/S3 abstraction — same code both sides
   batch.py             job submission to AWS Batch
   provenance.py        which converter build and config produced some labels
   cli.py               ingest / convert / build / submit entrypoints
-scripts/               operator tooling: bucket snapshot/prune, job resubmit
-                       and wait, corpus verification, README figure generation
+scripts/               operator tooling: the stamped image build, bucket
+                       snapshot/prune, job resubmit and wait, corpus
+                       verification, README figure generation
 assets/                README figures, generated from a converted run
-docker/                the conversion job image Batch runs
+docker/                the job image Batch runs — one image, both subcommands
 docs/                  RUNBOOK.md — operator procedures
 docs/plans/            dated decision records, one per substantial change
 infra/                 Terraform: bucket, IAM, ECR, Batch (applied)
@@ -306,8 +368,13 @@ and out of S3, using `configs/convert.s3.yaml`:
 ```bash
 scripts/build_image.sh
 docker run --rm -v ~/.aws:/home/app/.aws:ro -e AWS_PROFILE=default \
-  dronesynth-convert --run-id run_0001 --version v001
+  dronesynth-convert convert --config configs/convert.s3.yaml \
+  --run-id run_0001 --version v001
 ```
+
+The image's entrypoint is the bare CLI, so the subcommand is yours to pick —
+`build` and `ingest` run from the same image, and this is how the Batch job
+definitions invoke it too.
 
 `build_image.sh` wraps `docker build` only to stamp the current commit into the
 image, since the converter cannot work that out from inside a container that
@@ -345,6 +412,19 @@ the hold-out recopies frames while recomputing nothing.
 Copies are key-to-key within storage, so on S3 the ~9 GB never leaves the
 bucket — pulling it through the machine running the build would take longer than
 the render did.
+
+The same build runs on Batch, which removes the home link from the equation
+entirely. It uses the `dronesynth-build` job definition on the conversion queue,
+under the build role rather than the conversion one:
+
+```bash
+aws batch submit-job --job-name build-v003 \
+  --job-queue dronesynth-convert --job-definition dronesynth-build \
+  --parameters config=configs/build.v003.s3.yaml,version=v003
+```
+
+The config must be one baked into the image, so a new version means committing
+its config and pushing the image before submitting.
 
 The build refuses rather than guesses. It will not overwrite an existing
 version, mix runs converted under different mask configs or converter builds,
