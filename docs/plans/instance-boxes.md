@@ -174,7 +174,7 @@ routine noise.
 
 ## Validation
 
-- 76 tests pass. New coverage for a stranded piece joining its object, a piece
+- 91 tests pass, eight of them new: a stranded piece joining its object, a piece
   *outside* the body widening the box, an occluded drone staying one box, fill
   ratio counting pixels rather than the span, and `min_box_area` judging the
   assembled object rather than its pieces.
