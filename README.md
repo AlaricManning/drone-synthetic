@@ -177,6 +177,7 @@ src/dronesynth/
   cli.py               ingest / convert / submit entrypoints
 docker/                the conversion job image Batch runs
 docs/                  RUNBOOK.md — operator procedures
+docs/plans/            dated decision records, one per substantial change
 infra/                 Terraform: bucket, IAM, ECR, Batch (applied)
 tests/
 data/                  gitignored local staging (raw/, datasets/, qc/)

@@ -6,9 +6,23 @@ class_map:
   0: drone
 
 mask:
-  # a pixel belongs to the drone if any channel exceeds this value
-  threshold: 12
-  # boxes smaller than this many pixels are dropped as mask noise
+  # A pixel belongs to the drone if any channel exceeds this value.
+  #
+  # Not just a noise floor, for runs captured before 2026-07-26. Their mask pass
+  # ran with temporal AA on, which kept a fading copy of the drone's earlier
+  # positions in frame -- readable at 13-31, hundreds of pixels from the
+  # airframe. That was harmless while each speck was too small to survive
+  # min_box_area on its own, but a frame's pixels are grouped into one object
+  # now, so a ghost would stretch the box back towards the start of the clip.
+  # 32 clears it while costing at most 2 px of box width.
+  #
+  # drone-synth-render disables TAA for the mask pass as of that date, and those
+  # renders come out as a true matte: identical labels anywhere from >2 to >128.
+  # This stays at 32 for the older runs, not because it is still doing work.
+  # See docs/plans/instance-boxes.md.
+  threshold: 32
+  # Boxes smaller than this many pixels are dropped as mask noise. Applies to
+  # the assembled object, not to its pieces.
   min_box_area: 16
 
 split:

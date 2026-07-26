@@ -13,7 +13,7 @@ from pathlib import Path
 
 from dronesynth.datagen.boxes import (
     binarize_mask,
-    extract_boxes,
+    extract_instances,
     image_size,
     load_mask,
 )
@@ -29,6 +29,10 @@ class AnnotatedBox:
     h: int
     mask_area: int
     fill_ratio: float
+    # Islands this object rendered as; >1 means thin structure dropped out or
+    # something occluded the airframe. Defaults so annotations written before
+    # instance grouping still load.
+    components: int = 1
 
 
 @dataclass(frozen=True)
@@ -70,8 +74,9 @@ def annotate_frame(
             h=b.h,
             mask_area=b.mask_area,
             fill_ratio=round(b.fill_ratio, 4),
+            components=b.components,
         )
-        for b in extract_boxes(binary, min_box_area)
+        for b in extract_instances(binary, min_box_area)
     )
     return FrameAnnotation(
         frame_index=pair.index,
