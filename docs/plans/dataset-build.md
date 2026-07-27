@@ -188,6 +188,10 @@ seed.
 | recession val | 1102, 1107, 1112, 1117, 1122, 1127, 1132 |
 | crossing val | 2102, 2107, 2112 |
 
+This is v002's split. Five of these ten runs were later found to hold frames
+whose labels are wrong, and v003 replaced them — see "Redrawing the hold-out"
+below, which supersedes the seeds in this table.
+
 600 val frames against 2400. Seeds are independent draws, so a contiguous block
 would be equally valid; spreading them guards only against ordering effects
 nobody has checked for.
@@ -471,3 +475,55 @@ What survives per run is the pair a build actually reads: the annotations and
 the provenance sidecar. Bucket versioning is on, so these deletes are delete
 markers and the bytes are recoverable; reclaiming the space for real needs a
 lifecycle rule on noncurrent versions, which does not exist yet.
+
+## Redrawing the hold-out
+
+Measuring per-box contrast made a defect in v002's hold-out visible that no
+amount of looking at the split itself would have found. The mask pass renders
+the drone alone in clear air, so it produces a crisp silhouette regardless of
+whether the drone is distinguishable from the sky in the matching normal frame.
+Where it is not, the label is a confident box over what is effectively empty
+sky. Across the corpus 12.3% of boxes sit under 8 grey levels of contrast, and
+they are concentrated: 34 of 50 runs are entirely clean, while five are more
+than half flagged, because time of day happened to put sky luminance near the
+drone's albedo for the whole clip.
+
+Five of the ten v002 val runs were affected, seed 1102 in 40 frames of 60. That
+matters more in val than in train. Wrong labels in training cost accuracy, which
+is a number; wrong labels in validation cost the ability to read any number at
+all, including the one that would tell you whether the training labels hurt.
+
+v003 keeps the same 50 runs and replaces each affected val seed with the nearest
+seed having no flagged frame, which preserves the spread across the seed range
+rather than clustering the sample:
+
+| out | in |
+| --- | --- |
+| 1102 (40/60 flagged) | 1101 |
+| 1112 (23/60) | 1111 |
+| 1117 (7/60) | 1116 |
+| 1127 (21/60) | 1125 |
+| 2112 (3/60) | 2111 |
+
+**This trades one bias for another, and the trade is deliberate.** Choosing runs
+for having no flagged frame chooses for high contrast, so the new hold-out is
+easier than the data it validates: median-of-medians −47.1 grey levels against
+−33.2 for the corpus. v002's split sat at −33.9, almost exactly representative.
+So v002 measured the right distribution with a broken instrument, and v003
+measures a mildly optimistic one with a sound instrument. A good score on v003
+does not establish that a detector holds up on the harder skies in its own
+training set.
+
+Neither is the endpoint. The defect is per-frame, so the fix belongs per-frame:
+drop the frames whose labels are wrong and keep whole runs in the sample, which
+needs the build-time contrast threshold this plan already defers. What that
+threshold should be cannot be reasoned out — it needs a trained detector to say
+how little contrast is too little. Deliberately, then, v003 filters nothing and
+carries the full distribution in train, so that the first training run can
+answer the question rather than having it assumed away. Contrast is recorded on
+every box, so applying a threshold later re-runs a build and costs nothing.
+
+A new version rather than an edit to v002, for two independent reasons: a
+dataset version is immutable once its manifest lands, and the re-conversion at
+converter commit `961fbd6843` rewrote every annotation to add the contrast
+field, so v002's labels describe the same frames with less information.
