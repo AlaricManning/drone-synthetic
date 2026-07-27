@@ -246,18 +246,25 @@ frames.append(frames[-1].copy())
 delays.append(900)
 
 # --- upload: the publish set landing, manifest last -------------------------
-keys = (
-    [f"raw/{RUN}/normal/RunTemplate.{i:04d}.png" for i in range(0, n, 7)]
-    + [f"raw/{RUN}/mask/RunTemplate.{i:04d}.png" for i in range(0, n, 7)]
-    + [f"raw/{RUN}/job.json", f"raw/{RUN}/manifest.json"]
+# Every frame of both passes goes up, but 122 lines do not fit in a panel. Show
+# the first few of each consecutively and say how many were left out: a strided
+# sample would read as though the pipeline uploads every seventh frame.
+SHOWN = 3
+puts = []
+for sub in ("normal", "mask"):
+    puts += [f"PUT  raw/{RUN}/{sub}/RunTemplate.{i:04d}.png" for i in range(SHOWN)]
+    puts.append(f"     ... {n - SHOWN} more")
+puts += [f"PUT  raw/{RUN}/job.json", f"PUT  raw/{RUN}/manifest.json"]
+
+im, d = shell(
+    1, f"{n * 2 + 2} objects  ·  manifest written last, so a reader never sees a half-run"
 )
-im, d = shell(1, "manifest written last, so a reader never sees a half-run")
 panel(d, (24, 60, 856, 292), f"s3://{args.bucket}/raw/{RUN}/")
-y = 84
-for k in keys[-15:]:
-    final = k.endswith("manifest.json")
-    d.text((40, y), ("PUT  " + k)[:96], font=F_TINY, fill=DONE if final else DIM)
-    y += 14
+y = 88
+for ln in puts:
+    final = ln.endswith("manifest.json")
+    d.text((40, y), ln[:96], font=F_TINY, fill=DONE if final else DIM)
+    y += 17
 d.text((40, y + 4), "^ the commit point", font=F_TINY, fill=DONE)
 frames.append(im)
 delays.append(HOLD)
