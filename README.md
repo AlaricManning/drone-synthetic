@@ -11,7 +11,12 @@ on AWS Batch.
 One real run through all four stages. It was rendered, uploaded, and converted
 while this was recorded: `run_20260727_150314_7001`, whose manifest landing in
 S3 triggered its own conversion 32 seconds later. Nothing in the recording is
-mocked — the job id, the timings and the box coordinates are that run's.
+mocked — the job id, the timings and the box coordinates are that run's. The
+green box is the same green the QC debug render draws, below.
+
+The animation cannot be paused. [`assets/pipeline-demo.mp4`](assets/pipeline-demo.mp4)
+is the same recording with scrub controls, for reading the panels at your own
+pace.
 
 ![Normal render, mask pass, and the QC debug render with its derived box](assets/label-derivation.png)
 

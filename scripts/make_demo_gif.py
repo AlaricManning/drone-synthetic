@@ -22,14 +22,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import time
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import boto3
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 880, 384
 BAR_H, CAP_H = 44, 38
+
+# A GIF cannot be paused, so the three text stages are drawn complete and held
+# rather than typed in line by line. Revealing them a line at a time reads as
+# activity and gives the eye something to chase, which is exactly what makes a
+# panel hard to follow when you cannot stop it. The MP4 has real controls, and
+# is written from these same frames.
+HOLD = 3200
+CLIP_MS = 90
 
 INK = (232, 236, 243)
 DIM = (139, 148, 158)
@@ -38,7 +49,9 @@ PANEL = (22, 27, 34)
 EDGE = (48, 54, 61)
 LIVE = (88, 166, 255)
 DONE = (63, 185, 80)
-BOX = (255, 196, 61)
+# The same green the QC debug render draws, so a box here and a box in the
+# stills below it in the README read as the same thing rather than two.
+BOX = (0, 255, 0)
 
 STAGES = ["render", "upload", "convert", "dataset"]
 
@@ -228,7 +241,9 @@ for idx in range(0, n, 3):
     render_panel(im, d, frame_image(idx, "rgb"), idx, (24, 60), (400, 210), "normal")
     render_panel(im, d, frame_image(idx, "mask"), idx, (456, 60), (400, 210), "mask")
     frames.append(im)
-    delays.append(70)
+    delays.append(CLIP_MS)
+frames.append(frames[-1].copy())
+delays.append(900)
 
 # --- upload: the publish set landing, manifest last -------------------------
 keys = (
@@ -236,25 +251,16 @@ keys = (
     + [f"raw/{RUN}/mask/RunTemplate.{i:04d}.png" for i in range(0, n, 7)]
     + [f"raw/{RUN}/job.json", f"raw/{RUN}/manifest.json"]
 )
-for step in range(1, len(keys) + 1):
-    im, d = shell(1, "manifest written last, so a reader never sees a half-run")
-    panel(d, (24, 60, 856, 292), f"s3://{args.bucket}/raw/{RUN}/")
-    y = 84
-    for k in keys[max(0, step - 14) : step]:
-        final = k.endswith("manifest.json") and step == len(keys)
-        d.text(
-            (40, y),
-            ("PUT  " + k)[:96],
-            font=F_TINY,
-            fill=DONE if final else (INK if k == keys[step - 1] else DIM),
-        )
-        y += 14
-    if step == len(keys):
-        d.text((40, y + 6), "^ the commit point", font=F_TINY, fill=DONE)
-    frames.append(im)
-    delays.append(60)
-frames.append(frames[-1].copy())
-delays.append(700)
+im, d = shell(1, "manifest written last, so a reader never sees a half-run")
+panel(d, (24, 60, 856, 292), f"s3://{args.bucket}/raw/{RUN}/")
+y = 84
+for k in keys[-15:]:
+    final = k.endswith("manifest.json")
+    d.text((40, y), ("PUT  " + k)[:96], font=F_TINY, fill=DONE if final else DIM)
+    y += 14
+d.text((40, y + 4), "^ the commit point", font=F_TINY, fill=DONE)
+frames.append(im)
+delays.append(HOLD)
 
 # --- convert: triggered, not invoked ----------------------------------------
 idx = min(12, n - 1)
@@ -271,24 +277,21 @@ lines = [
     f"  {json.dumps({k: ann[k] for k in ('x', 'y', 'w', 'h')})}",
     f"  contrast {ann['contrast']}  ·  components {ann['components']}",
 ]
-for step in range(1, len(lines) + 1):
-    im, d = shell(
-        2, f"nobody ran this  ·  the manifest landing triggered it  ·  job {chain['job_id'][:8]}"
-    )
-    render_panel(
-        im, d, frame_image(idx, "rgb"), idx, (24, 60), (400, 210),
-        "label derived from the mask, not drawn by hand", draw_box=True,
-    )
-    panel(d, (456, 60, 856, 292), "trigger chain")
-    y = 84
-    for ln in lines[:step]:
-        tint = DONE if "SUCCEEDED" in ln else (LIVE if ln.startswith("  {") else DIM)
-        d.text((472, y), ln, font=F_TINY, fill=tint)
-        y += 14
-    frames.append(im)
-    delays.append(110)
-frames.append(frames[-1].copy())
-delays.append(900)
+im, d = shell(
+    2, f"nobody ran this  ·  the manifest landing triggered it  ·  job {chain['job_id'][:8]}"
+)
+render_panel(
+    im, d, frame_image(idx, "rgb"), idx, (24, 60), (400, 210),
+    "label derived from the mask, not drawn by hand", draw_box=True,
+)
+panel(d, (456, 60, 856, 292), "trigger chain")
+y = 84
+for ln in lines:
+    tint = DONE if "SUCCEEDED" in ln else (LIVE if ln.startswith("  {") else DIM)
+    d.text((472, y), ln, font=F_TINY, fill=tint)
+    y += 16
+frames.append(im)
+delays.append(HOLD + 800)
 
 # --- dataset: assembled, versioned, write-once ------------------------------
 v = args.dataset_version
@@ -306,21 +309,48 @@ tree = [
     "  labels from threshold 32, min_box_area 16",
     f"  each run stamped with the converter that made it ({commit})",
 ]
-for step in range(1, len(tree) + 1):
-    im, d = shell(3, "dronesynth build  ·  write-once: a version that exists is never overwritten")
-    panel(d, (24, 60, 856, 292), f"s3://{args.bucket}/datasets/{v}/")
-    y = 88
-    for ln in tree[:step]:
-        head = bool(ln) and not ln.startswith("  ")
-        d.text((44, y), ln, font=F_BODY if head else F_TINY, fill=INK if head else DIM)
-        y += 19
-    frames.append(im)
-    delays.append(120)
-frames.append(frames[-1].copy())
-delays.append(1400)
+im, d = shell(3, "dronesynth build  ·  write-once: a version that exists is never overwritten")
+panel(d, (24, 60, 856, 292), f"s3://{args.bucket}/datasets/{v}/")
+y = 88
+for ln in tree:
+    head = bool(ln) and not ln.startswith("  ")
+    d.text((44, y), ln, font=F_BODY if head else F_TINY, fill=INK if head else DIM)
+    y += 19
+frames.append(im)
+delays.append(HOLD + 800)
 
 args.out.parent.mkdir(parents=True, exist_ok=True)
 frames[0].save(
     args.out, save_all=True, append_images=frames[1:], duration=delays, loop=0, optimize=True
 )
 print(f"\nwrote {args.out}  {len(frames)} frames  {args.out.stat().st_size / 1e6:.2f} MB")
+
+# The MP4 exists for the play, pause and scrub the GIF cannot offer. H.264 via
+# ffmpeg rather than OpenCV, whose builds here only offer mp4v -- which most
+# browsers decline to play, making the controls moot.
+mp4 = args.out.with_suffix(".mp4")
+fps = 25
+with TemporaryDirectory() as tmp:
+    n_out = 0
+    for im, ms in zip(frames, delays, strict=True):
+        for _ in range(max(1, round(ms / 1000 * fps))):
+            im.save(Path(tmp) / f"{n_out:05d}.png")
+            n_out += 1
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-framerate", str(fps),
+        "-i", str(Path(tmp) / "%05d.png"),
+        "-c:v", "libx264",
+        "-preset", "slow",
+        "-crf", "20",
+        # Browsers need 4:2:0; without it Safari and GitHub's player show black.
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        str(mp4),
+    ]
+    if shutil.which("ffmpeg") is None:
+        print("ffmpeg not on PATH; skipping the mp4")
+    else:
+        subprocess.run(cmd, check=True)
+        secs = n_out / fps
+        print(f"wrote {mp4}  {secs:.1f}s  {mp4.stat().st_size / 1e6:.2f} MB")
