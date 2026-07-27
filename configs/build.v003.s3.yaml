@@ -1,0 +1,135 @@
+# Dataset version v003: v002's runs, re-converted with contrast, and a
+# validation split that does not measure with a broken ruler.
+#
+# One config per dataset version, tracked in git, because which runs a dataset
+# trains on is the decision most worth being able to look up later. The dataset's
+# own manifest records the same thing, but this is the reviewable statement of
+# intent that produced it.
+#
+# No class_map and no mask settings here: those belong to the conversion that
+# produced the annotations, and the build reads them back from each run's
+# provenance rather than restating them where they could contradict it.
+#
+# Same 50 runs as v002, 3000 frames: 35 recession, 15 crossing. A new version
+# rather than an edit for two reasons: a dataset version is immutable once its
+# manifest lands, and every annotation was rewritten by the re-conversion at
+# converter commit 961fbd6843, which added the contrast field. v002's labels
+# describe the same frames measured with less information.
+
+runs:
+  - run_20260726_041539_1100
+  - run_20260726_041702_1101
+  - run_20260726_041824_1102
+  - run_20260726_041946_1103
+  - run_20260726_042109_1104
+  - run_20260726_042231_1105
+  - run_20260726_042352_1106
+  - run_20260726_042515_1107
+  - run_20260726_042636_1108
+  - run_20260726_042759_1109
+  - run_20260726_042921_1110
+  - run_20260726_043055_1111
+  - run_20260726_043217_1112
+  - run_20260726_043340_1113
+  - run_20260726_043502_1114
+  - run_20260726_043623_1115
+  - run_20260726_043744_1116
+  - run_20260726_043905_1117
+  - run_20260726_044027_1118
+  - run_20260726_044148_1119
+  - run_20260726_044311_1120
+  - run_20260726_044554_1122
+  - run_20260726_045109_1126
+  - run_20260726_045503_1129
+  - run_20260726_045634_1130
+  - run_20260726_045804_1131
+  - run_20260726_045934_1132
+  - run_20260726_050107_1133
+  - run_20260726_050233_1134
+  - run_20260726_051252_1121
+  - run_20260726_051535_1123
+  - run_20260726_051657_1124
+  - run_20260726_051819_1125
+  - run_20260726_052103_1127
+  - run_20260726_052224_1128
+
+  # crossing clips — a different config, so a different distribution
+  - run_20260726_105829_2100
+  - run_20260726_105948_2101
+  - run_20260726_110108_2102
+  - run_20260726_110228_2103
+  - run_20260726_110347_2104
+  - run_20260726_110507_2105
+  - run_20260726_110627_2106
+  - run_20260726_110744_2107
+  - run_20260726_110903_2108
+  - run_20260726_111022_2109
+  - run_20260726_111142_2110
+  - run_20260726_111300_2111
+  - run_20260726_111436_2112
+  - run_20260726_111554_2113
+  - run_20260726_111714_2114
+
+split:
+  # Whole runs, never frames: consecutive frames of one camera path are
+  # near-duplicates, so a frame-level split leaks train data into val.
+  mode: by_run
+
+  # 20% of each distribution rather than a flat sample of 50, because recession
+  # and crossing come from different configs: 7 of 35 recession, 3 of 15
+  # crossing, 600 val frames against 2400.
+  #
+  # Worth being honest about the size of what this measures. 10 runs of one
+  # drone model against one sky is a thin validation set, and run-level
+  # splitting means its effective size is 10 scenes rather than 600 samples.
+  # It checks that renderer and converter agree; it does not establish that a
+  # detector generalizes.
+  #
+  # Why this is not v002's split
+  # ----------------------------
+  # v002 took every fifth seed, which was a clean systematic sample. Measuring
+  # contrast then showed that five of those ten runs contain frames whose label
+  # is a crisp box over a drone indistinguishable from the sky behind it -- the
+  # mask pass renders in clear air, so it cannot tell. Seed 1102 was 40 frames
+  # of 60. A validation set is the instrument every later experiment is read
+  # with, so wrong labels there do not cost accuracy, they cost the ability to
+  # interpret any result at all.
+  #
+  # Each affected seed is replaced by the nearest seed with no flagged frame,
+  # which keeps the sample spread across the seed range rather than clustered:
+  #
+  #   1102 (40/60 flagged) -> 1101      1117 (7/60)  -> 1116
+  #   1112 (23/60)         -> 1111      1127 (21/60) -> 1125
+  #   2112 (3/60)          -> 2111
+  #
+  # What this costs, stated plainly
+  # -------------------------------
+  # Selecting runs for having no flagged frame selects for high contrast, so
+  # this split is easier than the data it validates. The median-of-medians is
+  # -47.1 grey levels against -33.2 for the corpus; v002's split sat at -33.9,
+  # almost exactly representative. So v002 measured the right distribution with
+  # a broken ruler and this measures a slightly optimistic one with a sound
+  # ruler. A model scoring well here has not been shown to hold up on the
+  # harder skies the training set contains.
+  #
+  # The right fix is frame-level: drop the frames whose labels are wrong and
+  # keep whole runs in the sample, which needs the build's contrast threshold
+  # (see docs/plans/dataset-build.md). Until that exists, and until a trained
+  # detector says how little contrast is too little, a sound ruler on a slightly
+  # easy sample is the better of two flawed options -- and it is a config
+  # change, so revisiting it costs one build.
+  val_runs:
+    - run_20260726_041702_1101   # seed 1101, replaces 1102
+    - run_20260726_042515_1107   # seed 1107
+    - run_20260726_043055_1111   # seed 1111, replaces 1112
+    - run_20260726_043744_1116   # seed 1116, replaces 1117
+    - run_20260726_044554_1122   # seed 1122
+    - run_20260726_051819_1125   # seed 1125, replaces 1127
+    - run_20260726_045934_1132   # seed 1132
+    - run_20260726_110108_2102   # seed 2102
+    - run_20260726_110744_2107   # seed 2107
+    - run_20260726_111300_2111   # seed 2111, replaces 2112
+
+storage:
+  raw_root: s3://drone-synthetic-am/raw
+  dataset_root: s3://drone-synthetic-am/datasets
