@@ -15,6 +15,7 @@ mocked — the job id, the timings and the box coordinates are that run's. The
 green box is the same green the QC debug render draws, below.
 
 The animation cannot be paused. [`assets/pipeline-demo.mp4`](assets/pipeline-demo.mp4)
+https://github.com/user-attachments/assets/f9b9e2c1-0dd5-48fc-b27a-e6caa17ccac1
 is the same recording with scrub controls, for reading the panels at your own
 pace.
 
