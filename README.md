@@ -14,10 +14,12 @@ S3 triggered its own conversion 32 seconds later. Nothing in the recording is
 mocked — the job id, the timings and the box coordinates are that run's. The
 green box is the same green the QC debug render draws, below.
 
-The animation cannot be paused. [`assets/pipeline-demo.mp4`](assets/pipeline-demo.mp4)
+The animation above cannot be paused. Below is the same recording with scrub
+controls, for reading the panels at your own pace — also committed as
+[`assets/pipeline-demo.mp4`](assets/pipeline-demo.mp4), since the player is
+served from GitHub's CDN rather than from this repository.
+
 https://github.com/user-attachments/assets/f9b9e2c1-0dd5-48fc-b27a-e6caa17ccac1
-is the same recording with scrub controls, for reading the panels at your own
-pace.
 
 ![Normal render, mask pass, and the QC debug render with its derived box](assets/label-derivation.png)
 
