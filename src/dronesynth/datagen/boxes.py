@@ -65,13 +65,17 @@ def image_size(path: Path) -> tuple[int, int]:
         return image.size
 
 
-def load_mask(path: Path) -> np.ndarray:
+def load_image(path: Path) -> np.ndarray:
     # IMREAD_COLOR drops the alpha channel EasySynth writes (opaque everywhere,
     # so it would put every pixel above any threshold)
-    mask = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    if mask is None:
-        raise ValueError(f"cannot read mask image: {path}")
-    return mask
+    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError(f"cannot read image: {path}")
+    return image
+
+
+def load_mask(path: Path) -> np.ndarray:
+    return load_image(path)
 
 
 def binarize_mask(mask: np.ndarray, threshold: int) -> np.ndarray:

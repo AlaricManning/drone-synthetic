@@ -58,3 +58,63 @@ def test_annotations_round_trip_through_json(tmp_path):
     path = tmp_path / "out" / "annotations.json"
     write_annotations(original, path)
     assert read_annotations(path) == original
+
+
+def test_contrast_comes_from_the_normal_render(tmp_path):
+    """The one field the mask cannot supply, so the one that says it is visible."""
+    blob = (10, 30, 5, 15)
+    normal = tmp_path / "normal" / "seq.0000.png"
+    mask = tmp_path / "mask" / "seq.0000.png"
+    write_png(mask, 48, 64, blob=blob)
+
+    scene = np.full((48, 64, 3), 160, dtype=np.uint8)
+    scene[10:30, 5:15] = 60  # a dark drone on a bright sky
+    normal.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(normal), scene)
+
+    annotation = annotate_frame(
+        FramePair(index=0, normal=normal, mask=mask),
+        threshold=12,
+        min_box_area=16,
+        class_id=0,
+    )
+
+    assert annotation.boxes[0].contrast == -100.0
+
+
+def test_a_drone_the_render_lost_reads_as_no_contrast(tmp_path):
+    """A crisp mask over a drone the sky has swallowed -- the wrong label.
+
+    Nothing derived from the mask can tell this from a good frame: the box, the
+    area and the fill ratio are identical either way.
+    """
+    blob = (10, 30, 5, 15)
+    normal = tmp_path / "normal" / "seq.0000.png"
+    mask = tmp_path / "mask" / "seq.0000.png"
+    write_png(mask, 48, 64, blob=blob)
+
+    scene = np.full((48, 64, 3), 160, dtype=np.uint8)  # drone indistinguishable
+    normal.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(normal), scene)
+
+    box = annotate_frame(
+        FramePair(index=0, normal=normal, mask=mask),
+        threshold=12,
+        min_box_area=16,
+        class_id=0,
+    ).boxes[0]
+
+    assert box.contrast == 0.0
+    assert box.fill_ratio == 1.0  # the mask is perfectly happy
+
+
+def test_a_box_written_before_contrast_existed_loads_as_unmeasured(tmp_path):
+    """None rather than 0.0: not knowing is not the same as no contrast."""
+    path = tmp_path / "old.json"
+    path.write_text(
+        '[{"frame_index": 0, "normal": "a.png", "width": 64, "height": 48, '
+        '"boxes": [{"class_id": 0, "x": 1, "y": 2, "w": 3, "h": 4, '
+        '"mask_area": 12, "fill_ratio": 1.0}]}]'
+    )
+
+    assert read_annotations(path)[0].boxes[0].contrast is None

@@ -1,6 +1,7 @@
 import json
 import subprocess
 
+from dronesynth.datagen.contrast import metric_config
 from dronesynth.provenance import (
     ENV_COMMIT,
     ENV_DIRTY,
@@ -134,6 +135,7 @@ def test_run_provenance_records_the_mask_config():
         "threshold": 32,
         "min_box_area": 4,
         "class_map": {"0": "drone"},
+        "contrast": metric_config(),
     }
     assert record.run_id == "run_0001"
     assert record.converted_at.endswith("+00:00")
