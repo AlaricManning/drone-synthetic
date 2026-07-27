@@ -6,6 +6,10 @@ camera paths — and this pipeline turns those pairs into versioned, QC'd YOLO
 datasets. S3 is the system of record; conversion runs as a containerized job
 on AWS Batch.
 
+## Demo
+
+### One run, end to end
+
 ![A run moving through the pipeline: rendered in UE, uploaded to S3, converted by the auto-trigger, assembled into a versioned dataset](assets/pipeline-demo.gif)
 
 One real run through all four stages. It was rendered, uploaded, and converted
@@ -14,12 +18,16 @@ S3 triggered its own conversion 32 seconds later. Nothing in the recording is
 mocked — the job id, the timings and the box coordinates are that run's. The
 green box is the same green the QC debug render draws, below.
 
-The animation above cannot be paused. Below is the same recording with scrub
+### The same recording, with controls
+
+The animation above cannot be paused. This is the same recording with scrub
 controls, for reading the panels at your own pace — also committed as
 [`assets/pipeline-demo.mp4`](assets/pipeline-demo.mp4), since the player is
 served from GitHub's CDN rather than from this repository.
 
 https://github.com/user-attachments/assets/f9b9e2c1-0dd5-48fc-b27a-e6caa17ccac1
+
+### Where the labels come from
 
 ![Normal render, mask pass, and the QC debug render with its derived box](assets/label-derivation.png)
 
@@ -28,6 +36,8 @@ silhouette gives exact box extents at any scale. The `fill 0.35` is the box's
 mask fill ratio — a quadcopter is mostly air between its arms — and a drop in
 it is one of the signals QC flags for review. The third panel is the
 pipeline's own debug render, not an illustration.
+
+### What one flight covers
 
 ![The same flight at four distances, from a 719x294 box down to 17x6](assets/scale-strip.png)
 
