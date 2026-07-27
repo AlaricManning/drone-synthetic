@@ -219,7 +219,7 @@ IAM identities.
   is immutable: re-ingesting an existing id is an error.
 - **Canonical JSON annotations; YOLO is an export.** Mask renders carry
   segmentation information for free. Conversion writes per-frame JSON
-  (boxes, mask area, fill ratio, component count) as the source of truth, and
+  (boxes, mask area, fill ratio, component count, contrast) as the source of truth, and
   the YOLO layout is derived from it when a dataset is built, so future COCO or
   segmentation exports are new exporters, not rewrites. Conversion itself
   exports nothing: a per-run export could only duplicate every frame under a
@@ -230,9 +230,20 @@ IAM identities.
   is a fact about rasterisation that only happened to stand in for it. It
   stopped standing in when propeller blades began detaching at oblique
   headings and each island became its own label, asserting that a 13x4 sliver
-  inside a drone was a whole drone. The component count survives on the box
+  inside a drone was a whole drone.   The component count survives on the box
   so QC can still flag a fragmented mask as worth a look; see
   [docs/plans/instance-boxes.md](docs/plans/instance-boxes.md).
+- **One field comes from the normal render, because the mask cannot see the
+  weather.** The mask is rendered with the drone isolated in clear air, which
+  is what makes the silhouette clean and also what stops it knowing whether
+  the drone is *visible*: it yields the same crisp box over a bright drone and
+  over one haze has erased. So each box also carries `contrast`, the signed
+  difference between the object's own pixels and the sky immediately around
+  it. Signed because fog carries a drone across its background rather than
+  into it, and measured on fully covered pixels because a distant drone is
+  mostly anti-aliased edge whose colour is largely sky. It is measured here
+  rather than at render time so that refining it costs a re-convert instead of
+  a re-render, and thresholded at build time so the cut can move for free.
 - **Datasets are versioned and deterministic.** A dataset version is fully
   determined by (input runs, conversion config). Same inputs, same output,
   always re-derivable.
@@ -267,10 +278,10 @@ IAM identities.
   meaning — appears on both sides.
 - **QC is the proof of quality.** Nothing downstream trains on this data
   within the pipeline, so the QC report (boxes per frame, box size
-  distribution, mask fill ratio, empty-frame counts, and flagged outliers —
-  tiny boxes, low fill, boxes touching the frame edge, and masks that arrived
-  in more than one piece) and debug renders are the evidence the labels are
-  good.
+  distribution, mask fill ratio, contrast range, empty-frame counts, and
+  flagged outliers — tiny boxes, low fill, low contrast, boxes touching the
+  frame edge, and masks that arrived in more than one piece) and debug renders
+  are the evidence the labels are good.
 
 ## Security model
 

@@ -48,6 +48,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from dronesynth.datagen.contrast import metric_config
+
 logger = logging.getLogger(__name__)
 
 REPO_NAME = "drone-synthetic"
@@ -185,6 +187,11 @@ def run_provenance(
         conversion={
             "threshold": threshold,
             "min_box_area": min_box_area,
+            # Not a setting anyone passes, but a definition: contrast numbers
+            # are only comparable between runs measured the same way, and the
+            # metric is new enough to expect revision. Recording it here is what
+            # makes the build's "converted alike" check cover it too.
+            "contrast": metric_config(),
             # Keys stringified up front so a config compared straight from a
             # ConvertConfig matches one read back out of JSON. Without this the
             # build's "were these converted alike" check would see {0: 'drone'}

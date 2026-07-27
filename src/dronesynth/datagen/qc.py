@@ -21,6 +21,21 @@ from dronesynth.datagen.annotations import FrameAnnotation
 LOW_FILL_RATIO = 0.15
 # boxes smaller than this are legal but small enough to deserve a look
 TINY_BOX_AREA = 64
+# Grey levels between the object and the background beside it, either sign. The
+# mask is rendered in clear air, so a box can be crisp over a drone the normal
+# render has all but erased -- fog at 400 m does exactly that. Provisional and
+# advisory: only a trained detector can say how little contrast is too little,
+# so this marks frames for a look rather than deciding anything. The cut that
+# does decide belongs to `dronesynth build`, where it can move without a
+# re-render. See datagen/contrast.py.
+#
+# Expect this to fire, and not only on hazy frames. Over a 60-frame recession
+# with fog effectively off, contrast fell from -50 near to +1.4 at 400 m and
+# eight frames landed inside this band -- the drone is 14x8 px there, so most
+# of what covers it is part sky whatever the air is doing. The far end of the
+# distance range sits near the contrast floor on its own, which is worth
+# knowing before reading a flagged frame as a weather problem.
+LOW_CONTRAST = 8.0
 
 
 @dataclass(frozen=True)
@@ -39,6 +54,12 @@ class QcReport:
     box_area_max: int | None
     fill_ratio_min: float | None
     fill_ratio_max: float | None
+    # Signed, so the min and max are the extremes of darker-than-sky and
+    # brighter-than-sky rather than of visibility. The nearest to zero is the
+    # one worth worrying about, which is what the flags catch.
+    contrast_min: float | None
+    contrast_max: float | None
+    contrast_unmeasured: int
     flags: tuple[QcFlag, ...]
 
     def to_dict(self) -> dict:
@@ -63,6 +84,10 @@ def _frame_flags(annotation: FrameAnnotation) -> list[QcFlag]:
             flags.append(QcFlag(annotation.frame_index, f"low fill ratio {box.fill_ratio}"))
         if box.w * box.h < TINY_BOX_AREA:
             flags.append(QcFlag(annotation.frame_index, f"tiny box {box.w}x{box.h}"))
+        if box.contrast is not None and abs(box.contrast) < LOW_CONTRAST:
+            flags.append(
+                QcFlag(annotation.frame_index, f"low contrast {box.contrast}")
+            )
         touches = (
             box.x == 0
             or box.y == 0
@@ -78,6 +103,7 @@ def compute_qc(run_id: str, annotations: list[FrameAnnotation]) -> QcReport:
     boxes = [box for a in annotations for box in a.boxes]
     areas = [box.w * box.h for box in boxes]
     ratios = [box.fill_ratio for box in boxes]
+    contrasts = [box.contrast for box in boxes if box.contrast is not None]
     flags = [flag for a in annotations for flag in _frame_flags(a)]
     return QcReport(
         run_id=run_id,
@@ -88,6 +114,9 @@ def compute_qc(run_id: str, annotations: list[FrameAnnotation]) -> QcReport:
         box_area_max=max(areas) if areas else None,
         fill_ratio_min=min(ratios) if ratios else None,
         fill_ratio_max=max(ratios) if ratios else None,
+        contrast_min=min(contrasts) if contrasts else None,
+        contrast_max=max(contrasts) if contrasts else None,
+        contrast_unmeasured=sum(1 for box in boxes if box.contrast is None),
         flags=tuple(flags),
     )
 

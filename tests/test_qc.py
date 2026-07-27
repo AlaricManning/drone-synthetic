@@ -9,10 +9,11 @@ def annotation(index, boxes=(), width=640, height=480):
     )
 
 
-def box(x=100, y=100, w=40, h=30, fill_ratio=0.45):
+def box(x=100, y=100, w=40, h=30, fill_ratio=0.45, contrast=-25.0):
     return AnnotatedBox(
         class_id=0, x=x, y=y, w=w, h=h,
         mask_area=int(w * h * fill_ratio), fill_ratio=fill_ratio,
+        contrast=contrast,
     )
 
 
@@ -52,3 +53,33 @@ def test_edge_touching_box_flagged():
 def test_multiple_boxes_flagged():
     report = compute_qc("run_0001", [annotation(0, [box(), box(x=300)])])
     assert any("2 boxes" in f.reason for f in report.flags)
+
+
+def test_low_contrast_flagged():
+    report = compute_qc("run_0001", [annotation(0, [box(contrast=1.5)])])
+    assert any("low contrast 1.5" in f.reason for f in report.flags)
+
+
+def test_contrast_is_flagged_on_either_side_of_the_sky():
+    """A drone brighter than its background is as detectable as a darker one."""
+    dark = compute_qc("run_0001", [annotation(0, [box(contrast=-40.0)])])
+    bright = compute_qc("run_0001", [annotation(0, [box(contrast=40.0)])])
+    assert not any("low contrast" in f.reason for f in dark.flags)
+    assert not any("low contrast" in f.reason for f in bright.flags)
+
+
+def test_unmeasured_contrast_is_not_flagged_as_low():
+    """Every annotation written before the metric existed has None here."""
+    report = compute_qc("run_0001", [annotation(0, [box(contrast=None)])])
+    assert not any("low contrast" in f.reason for f in report.flags)
+    assert report.contrast_unmeasured == 1
+    assert report.contrast_min is None
+
+
+def test_contrast_range_is_reported():
+    report = compute_qc(
+        "run_0001",
+        [annotation(0, [box(contrast=-30.0)]), annotation(1, [box(contrast=12.0)])],
+    )
+    assert (report.contrast_min, report.contrast_max) == (-30.0, 12.0)
+    assert report.contrast_unmeasured == 0

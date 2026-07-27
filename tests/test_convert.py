@@ -7,6 +7,7 @@ import pytest
 from moto import mock_aws
 
 from dronesynth.config import load_convert_config
+from dronesynth.datagen.contrast import metric_config
 from dronesynth.datagen.convert import ConvertError, convert_run
 from dronesynth.ingest.capture import ingest_capture
 
@@ -75,6 +76,7 @@ def test_convert_registered_run_end_to_end(tmp_path):
         "threshold": 12,
         "min_box_area": 16,
         "class_map": {"0": "drone"},
+        "contrast": metric_config(),
     }
     assert provenance["converter"]["repo"] == "drone-synthetic"
 
