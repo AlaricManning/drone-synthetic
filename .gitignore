@@ -1,3 +1,6 @@
+# sampled frames scripts/audit_sky.py caches; re-downloadable from the bucket
+audit/
+
 # local data staging — raw runs, generated datasets, QC output live in S3, not git
 data/
 

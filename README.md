@@ -6,6 +6,29 @@ camera paths — and this pipeline turns those pairs into versioned, QC'd YOLO
 datasets. S3 is the system of record; conversion runs as a containerized job
 on AWS Batch.
 
+## Demo
+
+### One run, end to end
+
+![A run moving through the pipeline: rendered in UE, uploaded to S3, converted by the auto-trigger, assembled into a versioned dataset](assets/pipeline-demo.gif)
+
+One real run through all four stages. It was rendered, uploaded, and converted
+while this was recorded: `run_20260727_150314_7001`, whose manifest landing in
+S3 triggered its own conversion 32 seconds later. Nothing in the recording is
+mocked — the job id, the timings and the box coordinates are that run's. The
+green box is the same green the QC debug render draws, below.
+
+### The same recording, with controls
+
+The animation above cannot be paused. This is the same recording with scrub
+controls, for reading the panels at your own pace — also committed as
+[`assets/pipeline-demo.mp4`](assets/pipeline-demo.mp4), since the player is
+served from GitHub's CDN rather than from this repository.
+
+https://github.com/user-attachments/assets/f9b9e2c1-0dd5-48fc-b27a-e6caa17ccac1
+
+### Where the labels come from
+
 ![Normal render, mask pass, and the QC debug render with its derived box](assets/label-derivation.png)
 
 Labels come from the mask pass rather than from an annotator: thresholding the
@@ -14,6 +37,8 @@ mask fill ratio — a quadcopter is mostly air between its arms — and a drop i
 it is one of the signals QC flags for review. The third panel is the
 pipeline's own debug render, not an illustration.
 
+### What one flight covers
+
 ![The same flight at four distances, from a 719x294 box down to 17x6](assets/scale-strip.png)
 
 A single run also carries the object from 719x294 px down to 17x6 as the drone
@@ -21,9 +46,11 @@ flies away — forty-fold in linear size, two thousand-fold in area. That
 variation is what a detector needs and what is most tedious to collect and
 label by hand.
 
-Both images are generated from a converted run by
+Both still images are generated from a converted run by
 [scripts/make_demo_assets.py](scripts/make_demo_assets.py) — currently
-`run_20260726_044311_1120`. The run id is recorded here so it is possible to
+`run_20260726_044311_1120` — and the recording above by
+[scripts/make_demo_gif.py](scripts/make_demo_gif.py) from
+`run_20260727_150314_7001`. The run ids are recorded here so it is possible to
 tell whether the figures still reflect what the pipeline produces.
 
 ## Architecture
@@ -328,7 +355,7 @@ src/dronesynth/
   cli.py               ingest / convert / build / submit entrypoints
 scripts/               operator tooling: the stamped image build, bucket
                        snapshot/prune, job resubmit and wait, corpus
-                       verification, README figure generation
+                       verification, sky audit, README figure generation
 assets/                README figures, generated from a converted run
 docker/                the job image Batch runs — one image, both subcommands
 docs/                  RUNBOOK.md — operator procedures
