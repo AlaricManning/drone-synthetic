@@ -1,0 +1,243 @@
+# Dataset version v004: the weather corpus.
+#
+# 150 runs across 10 Ultra Dynamic Weather presets, dealt evenly rather than
+# sampled -- 15 runs each, ten recession and five crossing. Every earlier version
+# was a single atmosphere the manifests described inaccurately; this is
+# the first where the recorded weather is what rendered, verified by
+# reading each dimension back from the actor.
+#
+# One config per version, tracked in git, because which runs a dataset
+# trains on is the decision most worth being able to look up later.
+#
+# No class_map and no mask settings: those belong to the conversion that
+# produced the annotations, and the build reads them from each run's
+# provenance rather than restating them where they could contradict it.
+
+runs:
+  # Clear_Skies
+  - run_20260727_224634_30004
+  - run_20260727_225222_30009
+  - run_20260727_230758_30007
+  - run_20260727_231157_30005
+  - run_20260727_231845_30000
+  - run_20260727_233016_30054
+  - run_20260727_234722_30050
+  - run_20260727_234828_30002
+  - run_20260728_000037_30001
+  - run_20260728_003603_30051
+  - run_20260728_004143_30008
+  - run_20260728_004651_30052
+  - run_20260728_012221_30053
+  - run_20260728_012545_30003
+  - run_20260728_013242_30006
+
+  # Cloudy
+  - run_20260727_232544_30208
+  - run_20260727_232907_30202
+  - run_20260727_234034_30206
+  - run_20260727_234401_30251
+  - run_20260728_000405_30209
+  - run_20260728_002910_30204
+  - run_20260728_003016_30253
+  - run_20260728_004914_30205
+  - run_20260728_005130_30203
+  - run_20260728_005501_30250
+  - run_20260728_005827_30254
+  - run_20260728_010843_30200
+  - run_20260728_011205_30207
+  - run_20260728_011642_30252
+  - run_20260728_013349_30201
+
+  # Overcast
+  - run_20260727_225654_30303
+  - run_20260727_230639_30352
+  - run_20260727_231522_30304
+  - run_20260727_231736_30350
+  - run_20260727_232650_30351
+  - run_20260727_233818_30308
+  - run_20260727_235413_30300
+  - run_20260727_235629_30302
+  - run_20260728_000838_30306
+  - run_20260728_002323_30309
+  - run_20260728_005021_30354
+  - run_20260728_005936_30301
+  - run_20260728_010301_30353
+  - run_20260728_010950_30307
+  - run_20260728_011750_30305
+
+  # Partly_Cloudy
+  - run_20260727_224747_30150
+  - run_20260727_231413_30153
+  - run_20260727_231629_30109
+  - run_20260727_232435_30151
+  - run_20260727_233926_30102
+  - run_20260728_000728_30108
+  - run_20260728_002107_30101
+  - run_20260728_003710_30154
+  - run_20260728_003928_30104
+  - run_20260728_004034_30106
+  - run_20260728_010736_30100
+  - run_20260728_011058_30152
+  - run_20260728_011856_30105
+  - run_20260728_012003_30107
+  - run_20260728_012802_30103
+
+  # Rain
+  - run_20260727_223521_30506
+  - run_20260727_231305_30503
+  - run_20260727_232103_30504
+  - run_20260727_232214_30509
+  - run_20260727_232759_30553
+  - run_20260728_000254_30552
+  - run_20260728_002429_30500
+  - run_20260728_002800_30550
+  - run_20260728_003123_30505
+  - run_20260728_004527_30508
+  - run_20260728_005350_30502
+  - run_20260728_010627_30501
+  - run_20260728_012109_30554
+  - run_20260728_012654_30551
+  - run_20260728_013456_30507
+
+  # Rain_Light
+  - run_20260727_225004_30451
+  - run_20260727_225438_30400
+  - run_20260727_230125_30408
+  - run_20260727_230344_30405
+  - run_20260727_231047_30450
+  - run_20260727_231951_30452
+  - run_20260727_233451_30453
+  - run_20260727_233709_30406
+  - run_20260727_235302_30402
+  - run_20260727_235750_30454
+  - run_20260728_004804_30407
+  - run_20260728_005609_30401
+  - run_20260728_011311_30409
+  - run_20260728_012327_30403
+  - run_20260728_013021_30404
+
+  # Sand_Dust
+  - run_20260727_223410_30901
+  - run_20260727_224855_30953
+  - run_20260727_225113_30900
+  - run_20260727_230932_30907
+  - run_20260727_233343_30909
+  - run_20260727_234937_30950
+  - run_20260728_000143_30952
+  - run_20260728_001134_30904
+  - run_20260728_001308_30905
+  - run_20260728_001745_30951
+  - run_20260728_003345_30954
+  - run_20260728_010410_30906
+  - run_20260728_011531_30903
+  - run_20260728_012436_30908
+  - run_20260728_012911_30902
+
+  # Sand_Dust_Light
+  - run_20260727_224412_30808
+  - run_20260727_225546_30852
+  - run_20260727_225909_30802
+  - run_20260727_233602_30851
+  - run_20260727_234508_30809
+  - run_20260727_234615_30807
+  - run_20260727_235046_30850
+  - run_20260727_235922_30853
+  - run_20260728_000513_30804
+  - run_20260728_000622_30806
+  - run_20260728_001851_30854
+  - run_20260728_002214_30801
+  - run_20260728_004401_30803
+  - run_20260728_010518_30805
+  - run_20260728_011421_30800
+
+  # Snow
+  - run_20260727_224522_30701
+  - run_20260727_225330_30709
+  - run_20260727_230016_30702
+  - run_20260727_230236_30700
+  - run_20260727_230512_30708
+  - run_20260727_232325_30750
+  - run_20260727_233124_30707
+  - run_20260727_233233_30752
+  - run_20260727_234142_30751
+  - run_20260727_234253_30706
+  - run_20260728_000959_30704
+  - run_20260728_001417_30754
+  - run_20260728_001958_30703
+  - run_20260728_002648_30705
+  - run_20260728_003455_30753
+
+  # Snow_Light
+  - run_20260727_223252_30605
+  - run_20260727_225800_30600
+  - run_20260727_235154_30650
+  - run_20260727_235519_30608
+  - run_20260728_001527_30604
+  - run_20260728_001636_30601
+  - run_20260728_002537_30609
+  - run_20260728_003234_30652
+  - run_20260728_003818_30651
+  - run_20260728_004249_30602
+  - run_20260728_005240_30607
+  - run_20260728_005719_30606
+  - run_20260728_010043_30603
+  - run_20260728_010153_30653
+  - run_20260728_013134_30654
+
+split:
+  # Whole runs, never frames: consecutive frames of one camera path are
+  # near-duplicates, so a frame-level split leaks train into val.
+  mode: by_run
+
+  # 30 runs, 2 recession and 1 crossing from every preset.
+  #
+  # Stratified because a random draw over ten atmospheres can hold out four
+  # clear-sky runs and no rain, which makes any per-condition number an
+  # accident. Taking a fixed count from each preset makes the hold-out cover
+  # what the training set covers.
+  #
+  # Blind, which is the correction to v003. That split replaced runs carrying
+  # low-contrast frames, and selecting against low contrast selects for high
+  # contrast: its median sat at -47.1 grey levels against the corpus's -33.2,
+  # so it was measurably easier than the data it validated. This draw sees
+  # only run identity and a seeded RNG. Nothing about the frames enters it.
+  #
+  # Still one drone model against one sky, and run-level splitting means the
+  # effective size is 30 scenes rather than 1800 frames. It measures whether
+  # a detector holds up across weather; it does not establish that one
+  # generalizes to real footage.
+  val_runs:
+    - run_20260727_223252_30605   # Snow_Light, recession
+    - run_20260727_223410_30901   # Sand_Dust, recession
+    - run_20260727_224522_30701   # Snow, recession
+    - run_20260727_224747_30150   # Partly_Cloudy, crossing
+    - run_20260727_225546_30852   # Sand_Dust_Light, crossing
+    - run_20260727_230016_30702   # Snow, recession
+    - run_20260727_230125_30408   # Rain_Light, recession
+    - run_20260727_231629_30109   # Partly_Cloudy, recession
+    - run_20260727_231951_30452   # Rain_Light, crossing
+    - run_20260727_232214_30509   # Rain, recession
+    - run_20260727_233709_30406   # Rain_Light, recession
+    - run_20260727_234034_30206   # Cloudy, recession
+    - run_20260727_234142_30751   # Snow, crossing
+    - run_20260727_234401_30251   # Cloudy, crossing
+    - run_20260727_234722_30050   # Clear_Skies, crossing
+    - run_20260727_234937_30950   # Sand_Dust, crossing
+    - run_20260727_235154_30650   # Snow_Light, crossing
+    - run_20260728_000254_30552   # Rain, crossing
+    - run_20260728_000513_30804   # Sand_Dust_Light, recession
+    - run_20260728_000838_30306   # Overcast, recession
+    - run_20260728_001636_30601   # Snow_Light, recession
+    - run_20260728_002429_30500   # Rain, recession
+    - run_20260728_004143_30008   # Clear_Skies, recession
+    - run_20260728_005936_30301   # Overcast, recession
+    - run_20260728_010301_30353   # Overcast, crossing
+    - run_20260728_010736_30100   # Partly_Cloudy, recession
+    - run_20260728_010843_30200   # Cloudy, recession
+    - run_20260728_011421_30800   # Sand_Dust_Light, recession
+    - run_20260728_012436_30908   # Sand_Dust, recession
+    - run_20260728_013242_30006   # Clear_Skies, recession
+
+storage:
+  raw_root: s3://drone-synthetic-am/raw
+  dataset_root: s3://drone-synthetic-am/datasets

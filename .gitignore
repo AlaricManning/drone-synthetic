@@ -23,3 +23,7 @@ infra/.build/
 
 # secrets — AWS credentials never live in this repo
 .env
+
+# Throwaway probes and their outputs; findings live in docs/plans/.
+scratch/
+preview/
